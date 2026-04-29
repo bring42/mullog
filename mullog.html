@@ -1,0 +1,1705 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Loggfilter</title>
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --panel: rgba(255,255,255,.84);
+      --panel-solid: #ffffff;
+      --text: #111827;
+      --muted: #667085;
+      --muted-2: #94a3b8;
+      --border: #d9e1ec;
+      --accent: #2563eb;
+      --accent-2: #06b6d4;
+      --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+      --accent-wash: color-mix(in srgb, var(--accent) 7%, transparent);
+      --danger: #dc2626;
+      --warning: #d97706;
+      --info: #2563eb;
+      --success: #059669;
+      --shadow: 0 14px 44px rgba(15, 23, 42, .09);
+      --shadow-soft: 0 8px 24px rgba(15, 23, 42, .06);
+      --shadow-lg: 0 24px 80px rgba(15, 23, 42, .20);
+      --radius: 18px;
+      --font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    [data-theme="dark"] {
+      --bg: #080b12;
+      --panel: rgba(17,24,39,.84);
+      --panel-solid: #111827;
+      --text: #f8fafc;
+      --muted: #a7b0c0;
+      --muted-2: #7d8797;
+      --border: rgba(226,232,240,.14);
+      --accent-soft: color-mix(in srgb, var(--accent) 18%, transparent);
+      --accent-wash: color-mix(in srgb, var(--accent) 13%, transparent);
+      --shadow: 0 14px 44px rgba(0,0,0,.28);
+      --shadow-soft: 0 8px 24px rgba(0,0,0,.20);
+      --shadow-lg: 0 28px 90px rgba(0,0,0,.48);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 4%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 330px),
+        radial-gradient(circle at 96% 0%, color-mix(in srgb, var(--accent-2) 13%, transparent), transparent 420px),
+        linear-gradient(180deg, color-mix(in srgb, var(--accent) 5%, transparent), transparent 360px),
+        var(--bg);
+    }
+
+    button, input, select, textarea { font: inherit; }
+    button { border: 0; cursor: pointer; color: inherit; }
+
+    .app {
+      width: min(1400px, 100%);
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .card {
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .file-input-hidden {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+      left: -9999px;
+      top: -9999px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: stretch;
+      margin-bottom: 10px;
+    }
+
+    .hero-main {
+      min-height: 128px;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero-main::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      padding: 1px;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 34%, transparent), transparent 42%, color-mix(in srgb, var(--accent-2) 24%, transparent));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    .hero-main::after {
+      content: "";
+      position: absolute;
+      right: -80px;
+      bottom: -110px;
+      width: 240px;
+      height: 240px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      opacity: .13;
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      width: fit-content;
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--panel-solid) 62%, transparent);
+      font-size: 12px;
+    }
+
+    h1 {
+      margin: 9px 0 5px;
+      font-size: clamp(29px, 4vw, 44px);
+      line-height: .96;
+      letter-spacing: -.055em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 720px;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      position: relative;
+      z-index: 1;
+    }
+
+    .compact-tools {
+      min-width: 390px;
+      min-height: 128px;
+      padding: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .compact-tools::after {
+      content: "";
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      right: -76px;
+      top: -82px;
+      border-radius: 999px;
+      background: var(--accent-wash);
+      pointer-events: none;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 8px 12px;
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--panel-solid) 90%, transparent);
+      border: 1px solid var(--border);
+      transition: transform .14s ease, border-color .14s ease, background .14s ease, box-shadow .14s ease;
+      white-space: nowrap;
+      box-shadow: 0 1px 0 rgba(15, 23, 42, .02);
+      position: relative;
+      z-index: 1;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+      box-shadow: var(--shadow-soft);
+    }
+
+    .btn.primary {
+      background: linear-gradient(135deg, var(--text), color-mix(in srgb, var(--text) 78%, var(--accent)));
+      color: var(--bg);
+      border-color: transparent;
+    }
+
+    .btn.accent {
+      background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent-2) 55%, var(--accent)));
+      color: white;
+      border-color: transparent;
+    }
+
+    .btn.ghost { background: transparent; }
+    .btn.danger { color: var(--danger); }
+    .btn.small { min-height: 32px; padding: 6px 10px; font-size: 12px; border-radius: 10px; }
+
+    .encoding-select {
+      width: auto;
+      min-width: 146px;
+      min-height: 32px;
+      padding: 6px 9px;
+      font-size: 12px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .swatches {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .swatch {
+      width: 21px;
+      height: 21px;
+      border-radius: 999px;
+      border: 2px solid var(--panel-solid);
+      box-shadow: 0 0 0 1px var(--border);
+    }
+
+    .swatch.active {
+      box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px var(--accent-soft);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .stat {
+      padding: 9px 11px;
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .stat .label {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+    }
+
+    .stat .value {
+      font-size: 18px;
+      font-weight: 850;
+      letter-spacing: -.035em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .data-card {
+      overflow: hidden;
+      min-height: calc(100vh - 245px);
+      box-shadow: var(--shadow);
+    }
+
+    .toolbar {
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: stretch;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel-solid) 78%, transparent);
+    }
+
+    .toolbar-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 28px;
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+
+    .toolbar-left strong {
+      letter-spacing: -.02em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: min(760px, 70vw);
+    }
+
+    .toolbar-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-controls select {
+      width: auto;
+      min-width: 140px;
+    }
+
+    .filters {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      bottom: 18px;
+      width: min(430px, calc(100vw - 36px));
+      padding: 16px;
+      overflow: auto;
+      z-index: 45;
+      box-shadow: var(--shadow-lg);
+      transform: translateX(calc(100% + 34px));
+      transition: transform .22s ease;
+    }
+
+    .filters.open { transform: translateX(0); }
+
+    .filter-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 44;
+      background: rgba(2, 6, 23, .18);
+      backdrop-filter: blur(2px);
+    }
+
+    .filter-backdrop.open { display: block; }
+
+    .filter-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 850;
+      border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .section-title h2 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: -.025em;
+    }
+
+    .muted { color: var(--muted); }
+    .tiny { font-size: 12px; }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      margin-bottom: 11px;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      letter-spacing: .02em;
+    }
+
+    input[type="search"], input[type="text"], input[type="datetime-local"], select, textarea {
+      width: 100%;
+      min-height: 38px;
+      color: var(--text);
+      background: color-mix(in srgb, var(--panel-solid) 90%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 8px 10px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+      line-height: 1.35;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: color-mix(in srgb, var(--accent) 54%, var(--border));
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .filter-list {
+      display: grid;
+      gap: 9px;
+      margin: 12px 0;
+    }
+
+    .filter-rule {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      padding: 9px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: color-mix(in srgb, var(--panel-solid) 75%, transparent);
+    }
+
+    .filter-rule .rule-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .tools-row, .chips {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .chip {
+      min-height: 30px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel-solid);
+      font-size: 12px;
+    }
+
+    .chip.active {
+      background: var(--accent-soft);
+      border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+      font-weight: 750;
+    }
+
+    .hint-box {
+      padding: 10px;
+      border: 1px dashed var(--border);
+      border-radius: 13px;
+      color: var(--muted);
+      background: color-mix(in srgb, var(--panel-solid) 62%, transparent);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: calc(100vh - 310px);
+      min-height: 420px;
+    }
+
+    table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+      table-layout: fixed;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--panel-solid);
+      color: var(--muted);
+      font-weight: 750;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .th-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .th-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .resize-handle {
+      flex: 0 0 9px;
+      align-self: stretch;
+      min-height: 22px;
+      cursor: col-resize;
+      border-radius: 999px;
+      position: relative;
+    }
+
+    .resize-handle::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      bottom: 4px;
+      left: 3px;
+      width: 2px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--border) 70%, var(--muted));
+      opacity: .75;
+    }
+
+    .resize-handle:hover::after { background: var(--accent); opacity: 1; }
+
+    tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--panel-solid) 42%, transparent); }
+    tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+    tbody tr.row-error td, tbody tr.row-fatal td, tbody tr.row-critical td { background: color-mix(in srgb, var(--danger) 7%, transparent); }
+    tbody tr.row-warn td, tbody tr.row-warning td { background: color-mix(in srgb, var(--warning) 7%, transparent); }
+    tbody tr.row-error:hover td, tbody tr.row-fatal:hover td, tbody tr.row-critical:hover td { background: color-mix(in srgb, var(--danger) 11%, transparent); }
+    tbody tr.row-warn:hover td, tbody tr.row-warning:hover td { background: color-mix(in srgb, var(--warning) 11%, transparent); }
+
+    td { word-break: break-word; }
+
+    .level {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 7px;
+      border: 1px solid var(--border);
+      font-weight: 850;
+      font-size: 10px;
+      letter-spacing: .04em;
+    }
+
+    .level.error, .level.fatal, .level.critical { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+    .level.warn, .level.warning { color: var(--warning); background: color-mix(in srgb, var(--warning) 11%, transparent); }
+    .level.info, .level.notice { color: var(--info); background: color-mix(in srgb, var(--info) 8%, transparent); }
+    .level.debug, .level.trace { color: var(--muted); background: color-mix(in srgb, var(--muted) 10%, transparent); }
+
+    .empty {
+      padding: 34px 18px;
+      min-height: 320px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    .empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 6px;
+    }
+
+    .column-picker {
+      display: none;
+      position: absolute;
+      right: 10px;
+      top: 86px;
+      width: min(340px, calc(100vw - 34px));
+      max-height: 420px;
+      overflow: auto;
+      padding: 12px;
+      z-index: 20;
+    }
+
+    .column-picker.open { display: block; }
+
+    .check-row {
+      display: flex;
+      gap: 9px;
+      align-items: center;
+      padding: 7px 4px;
+      border-radius: 10px;
+    }
+
+    .check-row:hover { background: var(--accent-soft); }
+    .check-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%) translateY(120%);
+      background: var(--panel-solid);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      box-shadow: var(--shadow-lg);
+      padding: 9px 13px;
+      color: var(--text);
+      opacity: 0;
+      transition: all .24s ease;
+      z-index: 60;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    .mobile-cards { display: none; }
+
+    @media (max-width: 980px) {
+      .topbar { grid-template-columns: 1fr; }
+      .hero-main { grid-template-columns: 1fr; }
+      .hero-actions { justify-content: flex-start; flex-wrap: wrap; }
+      .compact-tools { min-width: 0; min-height: 70px; }
+      .stats { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .table-wrap { max-height: calc(100vh - 360px); }
+    }
+
+    @media (max-width: 680px) {
+      .app { padding: 10px; }
+      .hero-main, .compact-tools { min-height: auto; padding: 12px; }
+      .subtitle { display: none; }
+      .compact-tools { flex-wrap: wrap; justify-content: flex-start; }
+      .stats { grid-template-columns: 1fr 1fr; gap: 7px; }
+      .stat { padding: 8px 9px; min-height: 48px; }
+      .stat .value { font-size: 16px; }
+      .toolbar-controls { width: 100%; }
+      .toolbar-controls .btn, .toolbar-controls select { flex: 1 1 140px; }
+      .toolbar-left strong { max-width: 100%; white-space: normal; }
+      .table-wrap { display: none; }
+      .mobile-cards { display: grid; gap: 9px; padding: 10px; }
+      .log-card {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 10px;
+        background: color-mix(in srgb, var(--panel-solid) 82%, transparent);
+      }
+      .log-card.row-error, .log-card.row-fatal, .log-card.row-critical { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: color-mix(in srgb, var(--danger) 7%, var(--panel-solid)); }
+      .log-card.row-warn, .log-card.row-warning { border-color: color-mix(in srgb, var(--warning) 35%, var(--border)); background: color-mix(in srgb, var(--warning) 7%, var(--panel-solid)); }
+      .log-card .row {
+        display: grid;
+        gap: 3px;
+        padding: 6px 0;
+        border-bottom: 1px dashed var(--border);
+      }
+      .log-card .row:last-child { border-bottom: 0; }
+      .log-card .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+      .log-card .v { font-size: 12px; word-break: break-word; }
+      .filters {
+        top: auto;
+        left: 8px;
+        right: 8px;
+        bottom: 8px;
+        width: auto;
+        max-height: 86vh;
+        border-radius: 18px;
+        transform: translateY(calc(100% + 24px));
+      }
+      .filters.open { transform: translateY(0); }
+      .column-picker { top: 110px; }
+      h1 { margin-top: 7px; letter-spacing: -.045em; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <input id="fileInput" class="file-input-hidden" type="file" accept=".csv,.txt,.log,text/plain,text/csv" />
+
+    <header class="topbar">
+      <section class="hero-main card">
+        <div>
+          <span class="eyebrow">⚡ Lokal loggfiltrering · CSV · TXT · LOG</span>
+          <h1>Loggfilter</h1>
+          <p class="subtitle">Importera loggar, filtrera smart och exportera urvalet. All bearbetning sker lokalt i webbläsaren.</p>
+        </div>
+
+        <div class="hero-actions">
+          <button class="btn primary" id="importBtn" type="button">Importera fil</button>
+          <button class="btn ghost" id="clearBtn" type="button">Rensa</button>
+        </div>
+      </section>
+
+      <aside class="compact-tools card">
+        <select id="encodingSelect" class="encoding-select" title="Teckenkodning vid import">
+          <option value="auto" selected>Auto encoding</option>
+          <option value="utf-8">UTF-8</option>
+          <option value="windows-1252">Windows-1252</option>
+          <option value="iso-8859-1">ISO-8859-1</option>
+          <option value="utf-16le">UTF-16 LE</option>
+          <option value="utf-16be">UTF-16 BE</option>
+        </select>
+        <button class="btn small" id="themeBtn" type="button">Mörkt läge</button>
+        <div class="swatches" aria-label="Accentfärg">
+          <button class="swatch active" data-accent="#2563eb" style="background:#2563eb" title="Blå" type="button"></button>
+          <button class="swatch" data-accent="#475569" style="background:#475569" title="Slate" type="button"></button>
+          <button class="swatch" data-accent="#059669" style="background:#059669" title="Grön" type="button"></button>
+          <button class="swatch" data-accent="#d97706" style="background:#d97706" title="Amber" type="button"></button>
+          <button class="swatch" data-accent="#7c3aed" style="background:#7c3aed" title="Lila" type="button"></button>
+        </div>
+      </aside>
+    </header>
+
+    <section class="stats" aria-label="Statistik">
+      <div class="stat card"><div class="label">Rader</div><div class="value" id="statRows">0</div></div>
+      <div class="stat card"><div class="label">Matchar</div><div class="value" id="statMatches">0</div></div>
+      <div class="stat card"><div class="label">Kolumner</div><div class="value" id="statCols">0</div></div>
+      <div class="stat card"><div class="label">Format</div><div class="value" id="statFormat">—</div></div>
+    </section>
+
+    <main>
+      <section class="data-card card">
+        <div class="toolbar" style="position:relative">
+          <div class="toolbar-top">
+            <div class="toolbar-left">
+              <strong id="resultTitle">Resultat</strong>
+              <span class="tiny muted" id="renderInfo">Importera en logg för att börja.</span>
+            </div>
+          </div>
+
+          <div class="toolbar-controls">
+            <button class="btn small" id="filterOpenBtn" type="button">Filter <span class="filter-count" id="toolbarFilterCount">0</span></button>
+            <select id="pageSizeSelect" title="Rader som visas">
+              <option value="50">Visa 50</option>
+              <option value="100" selected>Visa 100</option>
+              <option value="250">Visa 250</option>
+              <option value="500">Visa 500</option>
+              <option value="1000">Visa 1000</option>
+            </select>
+            <button class="btn small" id="columnsBtn" type="button">Kolumner</button>
+            <button class="btn small accent" id="exportBtn" type="button">Exportera CSV</button>
+          </div>
+
+          <div class="column-picker card" id="columnPicker"></div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="dataTable"></table>
+        </div>
+        <div class="mobile-cards" id="mobileCards"></div>
+        <div class="empty" id="emptyState">
+          <div>
+            <strong>Ingen data ännu</strong>
+            Importera en fil eller klistra in loggtext via filterpanelen.
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="filter-backdrop" id="filterBackdrop"></div>
+
+  <aside class="filters card" id="filterPanel" aria-label="Filterpanel">
+    <div class="section-title">
+      <h2>Filter</h2>
+      <div class="tools-row">
+        <button class="btn small" id="addFilterBtn" type="button">+ Lägg till</button>
+        <button class="btn small ghost" id="filterCloseBtn" type="button">Stäng</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="quickSearch">Snabbsök i alla fält</label>
+      <input id="quickSearch" type="search" placeholder="Sök t.ex. error, userId, ip-adress…" />
+    </div>
+
+    <div class="field" id="levelBlock" hidden>
+      <label>Identifierade nivåer</label>
+      <div class="chips" id="levelChips"></div>
+    </div>
+
+    <div class="field" id="dateBlock" hidden>
+      <label>Tidsintervall</label>
+      <input id="dateFrom" type="datetime-local" />
+      <input id="dateTo" type="datetime-local" />
+    </div>
+
+    <div class="filter-list" id="filterList"></div>
+
+    <div class="tools-row">
+      <button class="btn small accent" id="applyBtn" type="button">Applicera</button>
+      <button class="btn small ghost" id="resetFiltersBtn" type="button">Återställ filter</button>
+    </div>
+
+    <hr style="border:0;border-top:1px solid var(--border);margin:16px 0" />
+
+    <div class="section-title">
+      <h2>Importera text</h2>
+    </div>
+    <div class="field">
+      <label for="pasteArea">Klistra in loggdata</label>
+      <textarea id="pasteArea" placeholder="Klistra in CSV eller textlogg här…"></textarea>
+    </div>
+    <button class="btn small" id="parsePasteBtn" type="button">Tolka inklistrad text</button>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = {
+      rows: [],
+      filtered: [],
+      columns: [],
+      visibleColumns: [],
+      fieldTypes: {},
+      columnWidths: {},
+      format: '—',
+      fileName: '',
+      sort: { column: null, direction: 'asc' },
+      activeLevels: new Set(),
+      detected: { levelField: null, timeField: null },
+      filterId: 1,
+      rules: [],
+      resizing: null
+    };
+
+    const els = {
+      fileInput: document.getElementById('fileInput'),
+      importBtn: document.getElementById('importBtn'),
+      statRows: document.getElementById('statRows'),
+      statMatches: document.getElementById('statMatches'),
+      statCols: document.getElementById('statCols'),
+      statFormat: document.getElementById('statFormat'),
+      quickSearch: document.getElementById('quickSearch'),
+      filterList: document.getElementById('filterList'),
+      addFilterBtn: document.getElementById('addFilterBtn'),
+      applyBtn: document.getElementById('applyBtn'),
+      resetFiltersBtn: document.getElementById('resetFiltersBtn'),
+      levelBlock: document.getElementById('levelBlock'),
+      levelChips: document.getElementById('levelChips'),
+      dateBlock: document.getElementById('dateBlock'),
+      dateFrom: document.getElementById('dateFrom'),
+      dateTo: document.getElementById('dateTo'),
+      dataTable: document.getElementById('dataTable'),
+      mobileCards: document.getElementById('mobileCards'),
+      emptyState: document.getElementById('emptyState'),
+      renderInfo: document.getElementById('renderInfo'),
+      resultTitle: document.getElementById('resultTitle'),
+      pageSizeSelect: document.getElementById('pageSizeSelect'),
+      columnsBtn: document.getElementById('columnsBtn'),
+      columnPicker: document.getElementById('columnPicker'),
+      exportBtn: document.getElementById('exportBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+      parsePasteBtn: document.getElementById('parsePasteBtn'),
+      pasteArea: document.getElementById('pasteArea'),
+      themeBtn: document.getElementById('themeBtn'),
+      encodingSelect: document.getElementById('encodingSelect'),
+      toast: document.getElementById('toast'),
+      filterPanel: document.getElementById('filterPanel'),
+      filterBackdrop: document.getElementById('filterBackdrop'),
+      filterOpenBtn: document.getElementById('filterOpenBtn'),
+      filterCloseBtn: document.getElementById('filterCloseBtn'),
+      toolbarFilterCount: document.getElementById('toolbarFilterCount')
+    };
+
+    const LOG_LEVELS = ['TRACE', 'DEBUG', 'INFO', 'NOTICE', 'WARN', 'WARNING', 'ERROR', 'FATAL', 'CRITICAL'];
+    const OPERATORS = [
+      ['contains', 'innehåller'],
+      ['notContains', 'innehåller inte'],
+      ['equals', 'är lika med'],
+      ['notEquals', 'är inte lika med'],
+      ['startsWith', 'börjar med'],
+      ['endsWith', 'slutar med'],
+      ['gt', 'större än'],
+      ['lt', 'mindre än'],
+      ['exists', 'har värde'],
+      ['empty', 'är tomt']
+    ];
+
+    function showToast(message) {
+      els.toast.textContent = message;
+      els.toast.classList.add('show');
+      window.clearTimeout(showToast._t);
+      showToast._t = window.setTimeout(() => els.toast.classList.remove('show'), 2200);
+    }
+
+    function openFilePicker() {
+      els.fileInput.value = '';
+      els.fileInput.click();
+    }
+
+    async function readFile(file) {
+      if (!file) return;
+      try {
+        const buffer = await file.arrayBuffer();
+        const decoded = decodeFileBuffer(buffer);
+        importText(decoded.text, file.name, decoded.encoding);
+      } catch (error) {
+        console.error(error);
+        showToast('Kunde inte läsa filen. Testa annan encoding eller klistra in texten via filterpanelen.');
+      }
+    }
+
+    function decodeFileBuffer(buffer) {
+      const selected = els.encodingSelect?.value || 'auto';
+      const bytes = new Uint8Array(buffer);
+
+      if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+        return { text: new TextDecoder('utf-8').decode(buffer), encoding: 'UTF-8 BOM' };
+      }
+
+      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+        return { text: new TextDecoder('utf-16le').decode(buffer), encoding: 'UTF-16 LE BOM' };
+      }
+
+      if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+        return { text: decodeUtf16Be(bytes), encoding: 'UTF-16 BE BOM' };
+      }
+
+      if (selected !== 'auto') {
+        return { text: decodeWithEncoding(buffer, selected), encoding: selected.toUpperCase() };
+      }
+
+      try {
+        return { text: new TextDecoder('utf-8', { fatal: true }).decode(buffer), encoding: 'UTF-8' };
+      } catch (_) {
+        return { text: decodeWithEncoding(buffer, 'windows-1252'), encoding: 'Windows-1252 auto' };
+      }
+    }
+
+    function decodeWithEncoding(buffer, encoding) {
+      if (encoding === 'utf-16be') return decodeUtf16Be(new Uint8Array(buffer));
+      return new TextDecoder(encoding).decode(buffer);
+    }
+
+    function decodeUtf16Be(bytes) {
+      const swapped = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i += 2) {
+        swapped[i] = bytes[i + 1] ?? 0;
+        swapped[i + 1] = bytes[i] ?? 0;
+      }
+      return new TextDecoder('utf-16le').decode(swapped);
+    }
+
+    function formatNumber(value) {
+      return new Intl.NumberFormat('sv-SE').format(value || 0);
+    }
+
+    function normalizeKey(key, fallbackIndex) {
+      const cleaned = String(key || '').trim().replace(/^\uFEFF/, '');
+      return cleaned || `fält_${fallbackIndex + 1}`;
+    }
+
+    function detectDelimiter(text) {
+      const sample = text.split(/\r?\n/).filter(Boolean).slice(0, 15);
+      const candidates = [',', ';', '\t', '|'];
+      let best = { delimiter: ',', score: -Infinity };
+      for (const delimiter of candidates) {
+        const counts = sample.map(line => splitCsvLine(line, delimiter).length);
+        const avg = counts.reduce((a, b) => a + b, 0) / Math.max(counts.length, 1);
+        const variance = counts.reduce((sum, n) => sum + Math.abs(n - avg), 0);
+        const score = avg - variance;
+        if (avg > 1 && score > best.score) best = { delimiter, score };
+      }
+      return best.delimiter;
+    }
+
+    function splitCsvLine(line, delimiter) {
+      const out = [];
+      let cur = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const next = line[i + 1];
+        if (char === '"' && inQuotes && next === '"') {
+          cur += '"';
+          i++;
+        } else if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === delimiter && !inQuotes) {
+          out.push(cur);
+          cur = '';
+        } else {
+          cur += char;
+        }
+      }
+      out.push(cur);
+      return out.map(v => v.trim());
+    }
+
+    function parseCsv(text) {
+      const delimiter = detectDelimiter(text);
+      const lines = text.split(/\r?\n/).filter(line => line.trim().length);
+      const records = lines.map(line => splitCsvLine(line, delimiter));
+      if (!records.length) return { rows: [], columns: [], format: 'CSV' };
+
+      const first = records[0];
+      const second = records[1] || [];
+      const firstHasText = first.some(v => /[a-zåäö_ -]/i.test(v));
+      const secondMostlyData = second.some(v => isTimestamp(v) || isNumeric(v) || LOG_LEVELS.includes(String(v).toUpperCase()));
+      const hasHeader = firstHasText && (secondMostlyData || new Set(first).size === first.length);
+      const headers = hasHeader ? first.map(normalizeKey) : first.map((_, i) => `kolumn_${i + 1}`);
+      const dataRecords = hasHeader ? records.slice(1) : records;
+      const columns = unique(headers);
+
+      const rows = dataRecords.map((record, rowIndex) => {
+        const row = { _row: rowIndex + 1 };
+        columns.forEach((col, i) => row[col] = record[i] ?? '');
+        return row;
+      });
+
+      return { rows, columns, format: delimiter === '\t' ? 'TSV' : 'CSV' };
+    }
+
+    function unique(values) {
+      const seen = new Map();
+      return values.map((value) => {
+        let key = value;
+        if (!seen.has(key)) {
+          seen.set(key, 1);
+          return key;
+        }
+        const next = seen.get(key) + 1;
+        seen.set(key, next);
+        return `${key}_${next}`;
+      });
+    }
+
+    function isNumeric(value) {
+      return value !== '' && !Number.isNaN(Number(String(value).replace(',', '.')));
+    }
+
+    function isTimestamp(value) {
+      const str = String(value || '').trim();
+      if (!str) return false;
+      return /^\d{4}-\d{2}-\d{2}/.test(str) ||
+        /^\d{2,4}[/.:-]\d{1,2}[/.:-]\d{1,2}/.test(str) ||
+        /^[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}/.test(str) ||
+        !Number.isNaN(Date.parse(str));
+    }
+
+    function parsePlainLog(text) {
+      const lines = text.split(/\r?\n/).filter(line => line.trim().length);
+      const rows = lines.map((line, idx) => parseLogLine(line, idx));
+      return { rows, columns: ['_row', 'timestamp', 'level', 'source', 'message', 'raw'], format: 'TXT/LOG' };
+    }
+
+    function parseLogLine(line, index) {
+      const raw = line.trim();
+      const patterns = [
+        /^(?<timestamp>\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\s*(?:\[(?<level1>TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL)\]|(?<level2>TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL))?\s*(?<source>[\w./:-]+)?\s*[-:|]?\s*(?<message>.*)$/i,
+        /^(?<timestamp>[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(?<source>[\w.-]+)?\s*(?<message>.*)$/,
+        /^\[?(?<level1>TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL)\]?\s*[-:|]?\s*(?<message>.*)$/i
+      ];
+
+      for (const pattern of patterns) {
+        const match = raw.match(pattern);
+        if (match?.groups) {
+          const level = (match.groups.level1 || match.groups.level2 || detectLevel(raw) || '').toUpperCase();
+          return {
+            _row: index + 1,
+            timestamp: match.groups.timestamp || '',
+            level,
+            source: match.groups.source || '',
+            message: match.groups.message || raw,
+            raw
+          };
+        }
+      }
+
+      return {
+        _row: index + 1,
+        timestamp: detectTimestamp(raw),
+        level: detectLevel(raw),
+        source: '',
+        message: raw,
+        raw
+      };
+    }
+
+    function detectLevel(text) {
+      const found = String(text).match(/\b(TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERROR|FATAL|CRITICAL)\b/i);
+      return found ? found[1].toUpperCase() : '';
+    }
+
+    function detectTimestamp(text) {
+      const found = String(text).match(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?/);
+      return found ? found[0] : '';
+    }
+
+    function chooseParser(text, fileName = '') {
+      const delimiter = detectDelimiter(text);
+      const firstLines = text.split(/\r?\n/).filter(Boolean).slice(0, 5);
+      const avgParts = firstLines.reduce((sum, line) => sum + splitCsvLine(line, delimiter).length, 0) / Math.max(firstLines.length, 1);
+      const looksCsv = /\.csv$/i.test(fileName) || avgParts >= 2.2;
+      return looksCsv ? parseCsv(text) : parsePlainLog(text);
+    }
+
+    function inferFieldTypes(rows, columns) {
+      const types = {};
+      for (const col of columns) {
+        const values = rows.map(r => r[col]).filter(v => String(v ?? '').trim() !== '').slice(0, 300);
+        if (!values.length) { types[col] = 'text'; continue; }
+        const numeric = values.filter(isNumeric).length / values.length;
+        const dates = values.filter(isTimestamp).length / values.length;
+        const levels = values.filter(v => LOG_LEVELS.includes(String(v).toUpperCase())).length / values.length;
+        if (levels > .55) types[col] = 'level';
+        else if (dates > .55) types[col] = 'date';
+        else if (numeric > .75) types[col] = 'number';
+        else types[col] = 'text';
+      }
+      return types;
+    }
+
+    function detectImportantFields() {
+      const levelField = state.columns.find(c => /level|nivå|severity/i.test(c) || state.fieldTypes[c] === 'level') || null;
+      const timeField = state.columns.find(c => /time|date|datum|timestamp|tid/i.test(c) || state.fieldTypes[c] === 'date') || null;
+      state.detected = { levelField, timeField };
+    }
+
+    function importText(text, fileName = 'inklistrad-logg', encoding = 'Text') {
+      if (!text.trim()) return showToast('Ingen data att tolka.');
+      const parsed = chooseParser(text, fileName);
+      state.rows = parsed.rows;
+      state.columns = parsed.columns.filter(Boolean);
+      state.visibleColumns = state.columns.slice(0, Math.min(state.columns.length, 8));
+      state.fieldTypes = inferFieldTypes(state.rows, state.columns);
+      state.columnWidths = inferColumnWidths(state.columns);
+      state.format = parsed.format;
+      state.fileName = fileName;
+      state.sort = { column: null, direction: 'asc' };
+      state.activeLevels.clear();
+      state.rules = [];
+      els.quickSearch.value = '';
+      els.dateFrom.value = '';
+      els.dateTo.value = '';
+      detectImportantFields();
+      createSmartDefaultRules();
+      renderFilters();
+      renderDetectedFilters();
+      renderColumnPicker();
+      applyFilters();
+      showToast(`Loggen importerades (${encoding}).`);
+    }
+
+    function inferColumnWidths(columns) {
+      const widths = {};
+      for (const col of columns) {
+        if (/message|raw|description|text|stack|error|kommentar|händelse/i.test(col)) widths[col] = 380;
+        else if (/timestamp|date|time|datum|tid/i.test(col)) widths[col] = 220;
+        else if (/level|severity|nivå|status|code/i.test(col)) widths[col] = 120;
+        else widths[col] = 165;
+      }
+      return widths;
+    }
+
+    function createSmartDefaultRules() {
+      const interesting = state.columns.filter(col => {
+        const values = distinctValues(col);
+        return values.length > 1 && values.length <= 40 && !['_row', 'raw', 'message'].includes(col);
+      });
+      if (interesting.length && state.rows.length) {
+        state.rules = [{ id: state.filterId++, field: interesting[0], op: 'contains', value: '' }];
+      }
+    }
+
+    function distinctValues(field, limit = 200) {
+      const set = new Set();
+      for (const row of state.rows) {
+        const value = String(row[field] ?? '').trim();
+        if (value) set.add(value);
+        if (set.size >= limit) break;
+      }
+      return [...set].sort((a, b) => a.localeCompare(b, 'sv'));
+    }
+
+    function renderFilters() {
+      els.filterList.innerHTML = '';
+      if (!state.columns.length) {
+        els.filterList.innerHTML = '<div class="hint-box">Importera en logg först, så skapas filter baserat på fälten i filen.</div>';
+        return;
+      }
+
+      for (const rule of state.rules) {
+        const wrap = document.createElement('div');
+        wrap.className = 'filter-rule';
+        wrap.dataset.id = rule.id;
+        const datalistId = `values-${rule.id}`;
+        wrap.innerHTML = `
+          <div class="rule-grid">
+            <select class="rule-field" aria-label="Fält">
+              ${state.columns.map(c => `<option value="${escapeHtml(c)}" ${c === rule.field ? 'selected' : ''}>${escapeHtml(c)} ${state.fieldTypes[c] ? `· ${state.fieldTypes[c]}` : ''}</option>`).join('')}
+            </select>
+            <select class="rule-op" aria-label="Operator">
+              ${OPERATORS.map(([value, label]) => `<option value="${value}" ${value === rule.op ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>
+          </div>
+          <input class="rule-value" type="text" list="${datalistId}" value="${escapeAttr(rule.value || '')}" placeholder="Värde…" aria-label="Värde" />
+          <datalist id="${datalistId}">${distinctValues(rule.field, 80).map(v => `<option value="${escapeAttr(v)}"></option>`).join('')}</datalist>
+          <button class="btn small danger remove-rule" type="button">Ta bort</button>
+        `;
+        els.filterList.appendChild(wrap);
+      }
+    }
+
+    function syncRulesFromDom() {
+      state.rules = [...els.filterList.querySelectorAll('.filter-rule')].map(el => ({
+        id: Number(el.dataset.id),
+        field: el.querySelector('.rule-field').value,
+        op: el.querySelector('.rule-op').value,
+        value: el.querySelector('.rule-value').value
+      }));
+    }
+
+    function countActiveFilters() {
+      const ruleCount = state.rules.filter(rule => String(rule.value || '').trim() || ['exists', 'empty'].includes(rule.op)).length;
+      const searchCount = els.quickSearch.value.trim() ? 1 : 0;
+      const levelCount = state.activeLevels.size;
+      const dateCount = (els.dateFrom.value || els.dateTo.value) ? 1 : 0;
+      return ruleCount + searchCount + levelCount + dateCount;
+    }
+
+    function renderFilterCounts() {
+      els.toolbarFilterCount.textContent = countActiveFilters();
+    }
+
+    function renderDetectedFilters() {
+      const levelField = state.detected.levelField;
+      const timeField = state.detected.timeField;
+
+      if (!levelField) {
+        els.levelBlock.hidden = true;
+        els.levelChips.innerHTML = '';
+      } else {
+        const levels = distinctValues(levelField).filter(v => LOG_LEVELS.includes(String(v).toUpperCase()));
+        els.levelBlock.hidden = !levels.length;
+        els.levelChips.innerHTML = levels.map(level => `<button class="chip ${state.activeLevels.has(level.toUpperCase()) ? 'active' : ''}" data-level="${escapeAttr(level.toUpperCase())}" type="button">${escapeHtml(level.toUpperCase())}</button>`).join('');
+      }
+
+      els.dateBlock.hidden = !timeField;
+    }
+
+    function applyFilters() {
+      syncRulesFromDom();
+      const query = els.quickSearch.value.trim().toLowerCase();
+      const from = els.dateFrom.value ? new Date(els.dateFrom.value).getTime() : null;
+      const to = els.dateTo.value ? new Date(els.dateTo.value).getTime() : null;
+      const levelField = state.detected.levelField;
+      const timeField = state.detected.timeField;
+
+      state.filtered = state.rows.filter(row => {
+        if (query) {
+          const haystack = state.columns.map(c => row[c]).join(' ').toLowerCase();
+          if (!haystack.includes(query)) return false;
+        }
+
+        if (levelField && state.activeLevels.size) {
+          const current = String(row[levelField] ?? '').toUpperCase();
+          if (!state.activeLevels.has(current)) return false;
+        }
+
+        if (timeField && (from || to)) {
+          const parsed = Date.parse(row[timeField]);
+          if (Number.isNaN(parsed)) return false;
+          if (from && parsed < from) return false;
+          if (to && parsed > to) return false;
+        }
+
+        for (const rule of state.rules) {
+          if (!rule.field || !rule.op) continue;
+          if (!matchRule(row[rule.field], rule.op, rule.value, state.fieldTypes[rule.field])) return false;
+        }
+
+        return true;
+      });
+
+      sortFiltered();
+      renderAll();
+    }
+
+    function matchRule(raw, op, filterValue, type) {
+      const value = String(raw ?? '');
+      const wanted = String(filterValue ?? '');
+      if (op === 'exists') return value.trim() !== '';
+      if (op === 'empty') return value.trim() === '';
+      if (!wanted.trim()) return true;
+
+      if (type === 'number' && ['gt', 'lt', 'equals', 'notEquals'].includes(op)) {
+        const a = Number(value.replace(',', '.'));
+        const b = Number(wanted.replace(',', '.'));
+        if (Number.isNaN(a) || Number.isNaN(b)) return false;
+        if (op === 'gt') return a > b;
+        if (op === 'lt') return a < b;
+        if (op === 'equals') return a === b;
+        if (op === 'notEquals') return a !== b;
+      }
+
+      if (type === 'date' && ['gt', 'lt'].includes(op)) {
+        const a = Date.parse(value);
+        const b = Date.parse(wanted);
+        if (Number.isNaN(a) || Number.isNaN(b)) return false;
+        return op === 'gt' ? a > b : a < b;
+      }
+
+      const a = value.toLowerCase();
+      const b = wanted.toLowerCase();
+      switch (op) {
+        case 'contains': return a.includes(b);
+        case 'notContains': return !a.includes(b);
+        case 'equals': return a === b;
+        case 'notEquals': return a !== b;
+        case 'startsWith': return a.startsWith(b);
+        case 'endsWith': return a.endsWith(b);
+        case 'gt': return a > b;
+        case 'lt': return a < b;
+        default: return true;
+      }
+    }
+
+    function sortFiltered() {
+      const { column, direction } = state.sort;
+      if (!column) return;
+      const factor = direction === 'asc' ? 1 : -1;
+      const type = state.fieldTypes[column];
+      state.filtered.sort((a, b) => {
+        let av = a[column] ?? '';
+        let bv = b[column] ?? '';
+        if (type === 'number') {
+          av = Number(String(av).replace(',', '.'));
+          bv = Number(String(bv).replace(',', '.'));
+          return ((av || 0) - (bv || 0)) * factor;
+        }
+        if (type === 'date') {
+          return (Date.parse(av) - Date.parse(bv)) * factor;
+        }
+        return String(av).localeCompare(String(bv), 'sv', { numeric: true, sensitivity: 'base' }) * factor;
+      });
+    }
+
+    function renderAll() {
+      renderStats();
+      renderTable();
+      renderMobileCards();
+      renderColumnPicker();
+      renderFilterCounts();
+    }
+
+    function renderStats() {
+      els.statRows.textContent = formatNumber(state.rows.length);
+      els.statMatches.textContent = formatNumber(state.filtered.length);
+      els.statCols.textContent = formatNumber(state.columns.length);
+      els.statFormat.textContent = state.format;
+      els.resultTitle.textContent = state.fileName ? state.fileName : 'Resultat';
+      const pageSize = Number(els.pageSizeSelect.value);
+      const shown = Math.min(pageSize, state.filtered.length);
+      els.renderInfo.textContent = state.rows.length
+        ? `Visar ${formatNumber(shown)} av ${formatNumber(state.filtered.length)} matchande rader.`
+        : 'Importera en logg för att börja.';
+      els.emptyState.style.display = state.rows.length ? 'none' : 'grid';
+    }
+
+    function renderTable() {
+      const pageSize = Number(els.pageSizeSelect.value);
+      const rows = state.filtered.slice(0, pageSize);
+      const cols = state.visibleColumns.length ? state.visibleColumns : state.columns;
+      if (!state.rows.length) {
+        els.dataTable.innerHTML = '';
+        return;
+      }
+      const colgroup = `<colgroup>${cols.map(col => `<col style="width:${state.columnWidths[col] || 160}px">`).join('')}</colgroup>`;
+      const thead = `<thead><tr>${cols.map(col => `
+        <th data-col="${escapeAttr(col)}">
+          <div class="th-inner">
+            <span class="th-label" title="Sortera">${escapeHtml(col)}${sortIndicator(col)}</span>
+            <span class="resize-handle" data-col="${escapeAttr(col)}" title="Dra för att ändra bredd"></span>
+          </div>
+        </th>`).join('')}</tr></thead>`;
+      const tbody = `<tbody>${rows.map(row => `<tr class="${rowClass(row)}">${cols.map(col => `<td title="${escapeAttr(row[col] ?? '')}">${formatCell(row[col], col)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+      els.dataTable.innerHTML = colgroup + thead + tbody;
+    }
+
+    function rowClass(row) {
+      const field = state.detected.levelField;
+      if (!field) return '';
+      const level = String(row[field] || '').toLowerCase();
+      return level ? `row-${escapeAttr(level)}` : '';
+    }
+
+    function renderMobileCards() {
+      const pageSize = Math.min(Number(els.pageSizeSelect.value), 100);
+      const rows = state.filtered.slice(0, pageSize);
+      const cols = state.visibleColumns.length ? state.visibleColumns : state.columns.slice(0, 6);
+      if (!state.rows.length) {
+        els.mobileCards.innerHTML = '';
+        return;
+      }
+      els.mobileCards.innerHTML = rows.map(row => `
+        <article class="log-card ${rowClass(row)}">
+          ${cols.map(col => `<div class="row"><div class="k">${escapeHtml(col)}</div><div class="v">${formatCell(row[col], col)}</div></div>`).join('')}
+        </article>
+      `).join('');
+    }
+
+    function renderColumnPicker() {
+      els.columnPicker.innerHTML = `
+        <div class="section-title" style="margin-bottom:8px"><h2>Synliga kolumner</h2><button class="btn small ghost" id="allColumnsBtn" type="button">Alla</button></div>
+        ${state.columns.map(col => `
+          <label class="check-row">
+            <input type="checkbox" data-col="${escapeAttr(col)}" ${state.visibleColumns.includes(col) ? 'checked' : ''} />
+            <span>${escapeHtml(col)} <span class="muted tiny">${state.fieldTypes[col] || ''}</span></span>
+          </label>
+        `).join('')}
+      `;
+      const allBtn = els.columnPicker.querySelector('#allColumnsBtn');
+      if (allBtn) allBtn.addEventListener('click', () => {
+        state.visibleColumns = [...state.columns];
+        renderAll();
+      });
+    }
+
+    function formatCell(value, col) {
+      const str = String(value ?? '');
+      if (state.fieldTypes[col] === 'level' || LOG_LEVELS.includes(str.toUpperCase())) {
+        return `<span class="level ${escapeAttr(str.toLowerCase())}">${escapeHtml(str)}</span>`;
+      }
+      return escapeHtml(str.length > 1000 ? str.slice(0, 1000) + '…' : str);
+    }
+
+    function sortIndicator(col) {
+      if (state.sort.column !== col) return '';
+      return state.sort.direction === 'asc' ? ' ↑' : ' ↓';
+    }
+
+    function exportCsv() {
+      if (!state.filtered.length) return showToast('Inga matchande rader att exportera.');
+      const cols = state.visibleColumns.length ? state.visibleColumns : state.columns;
+      const csv = [
+        cols.map(csvEscape).join(','),
+        ...state.filtered.map(row => cols.map(col => csvEscape(row[col])).join(','))
+      ].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.href = url;
+      a.download = `filtrerad-logg-${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('CSV exporterad.');
+    }
+
+    function csvEscape(value) {
+      const str = String(value ?? '');
+      if (/[",\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+      return str;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function escapeAttr(value) { return escapeHtml(value); }
+
+    function resetAll() {
+      state.rows = [];
+      state.filtered = [];
+      state.columns = [];
+      state.visibleColumns = [];
+      state.fieldTypes = {};
+      state.columnWidths = {};
+      state.format = '—';
+      state.fileName = '';
+      state.activeLevels.clear();
+      state.rules = [];
+      state.detected = { levelField: null, timeField: null };
+      els.fileInput.value = '';
+      els.pasteArea.value = '';
+      els.quickSearch.value = '';
+      els.dateFrom.value = '';
+      els.dateTo.value = '';
+      els.levelBlock.hidden = true;
+      els.dateBlock.hidden = true;
+      renderFilters();
+      renderAll();
+      showToast('Rensat.');
+    }
+
+    function openFilters() {
+      els.filterPanel.classList.add('open');
+      els.filterBackdrop.classList.add('open');
+    }
+
+    function closeFilters() {
+      els.filterPanel.classList.remove('open');
+      els.filterBackdrop.classList.remove('open');
+    }
+
+    els.importBtn.addEventListener('click', openFilePicker);
+
+    els.fileInput.addEventListener('change', async (event) => {
+      await readFile(event.target.files?.[0]);
+    });
+
+    els.quickSearch.addEventListener('input', applyFilters);
+    els.applyBtn.addEventListener('click', applyFilters);
+    els.dateFrom.addEventListener('change', applyFilters);
+    els.dateTo.addEventListener('change', applyFilters);
+    els.pageSizeSelect.addEventListener('change', renderAll);
+    els.exportBtn.addEventListener('click', exportCsv);
+    els.clearBtn.addEventListener('click', resetAll);
+    els.parsePasteBtn.addEventListener('click', () => importText(els.pasteArea.value, 'inklistrad-logg'));
+    els.filterOpenBtn.addEventListener('click', openFilters);
+    els.filterCloseBtn.addEventListener('click', closeFilters);
+    els.filterBackdrop.addEventListener('click', closeFilters);
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') closeFilters();
+    });
+
+    els.addFilterBtn.addEventListener('click', () => {
+      if (!state.columns.length) {
+        showToast('Importera en logg först.');
+        return;
+      }
+      state.rules.push({ id: state.filterId++, field: state.columns[0], op: 'contains', value: '' });
+      renderFilters();
+      renderFilterCounts();
+    });
+
+    els.resetFiltersBtn.addEventListener('click', () => {
+      state.rules = [];
+      state.activeLevels.clear();
+      els.quickSearch.value = '';
+      els.dateFrom.value = '';
+      els.dateTo.value = '';
+      renderFilters();
+      renderDetectedFilters();
+      applyFilters();
+    });
+
+    els.filterList.addEventListener('input', (event) => {
+      if (event.target.matches('.rule-field')) {
+        syncRulesFromDom();
+        renderFilters();
+      }
+      applyFilters();
+    });
+
+    els.filterList.addEventListener('change', applyFilters);
+
+    els.filterList.addEventListener('click', (event) => {
+      if (!event.target.matches('.remove-rule')) return;
+      const id = Number(event.target.closest('.filter-rule').dataset.id);
+      state.rules = state.rules.filter(rule => rule.id !== id);
+      renderFilters();
+      applyFilters();
+    });
+
+    els.levelChips.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-level]');
+      if (!chip) return;
+      const level = chip.dataset.level;
+      if (state.activeLevels.has(level)) state.activeLevels.delete(level);
+      else state.activeLevels.add(level);
+      renderDetectedFilters();
+      applyFilters();
+    });
+
+    els.dataTable.addEventListener('click', (event) => {
+      if (event.target.closest('.resize-handle')) return;
+      const label = event.target.closest('.th-label');
+      if (!label) return;
+      const th = label.closest('th[data-col]');
+      if (!th) return;
+      const col = th.dataset.col;
+      if (state.sort.column === col) {
+        state.sort.direction = state.sort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sort.column = col;
+        state.sort.direction = 'asc';
+      }
+      applyFilters();
+    });
+
+    els.dataTable.addEventListener('pointerdown', (event) => {
+      const handle = event.target.closest('.resize-handle');
+      if (!handle) return;
+      event.preventDefault();
+      const col = handle.dataset.col;
+      state.resizing = {
+        col,
+        startX: event.clientX,
+        startWidth: state.columnWidths[col] || handle.closest('th').offsetWidth || 160
+      };
+      handle.setPointerCapture?.(event.pointerId);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    window.addEventListener('pointermove', (event) => {
+      if (!state.resizing) return;
+      const delta = event.clientX - state.resizing.startX;
+      state.columnWidths[state.resizing.col] = Math.max(72, Math.min(900, state.resizing.startWidth + delta));
+      renderTable();
+    });
+
+    window.addEventListener('pointerup', () => {
+      if (!state.resizing) return;
+      state.resizing = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+
+    els.columnsBtn.addEventListener('click', () => els.columnPicker.classList.toggle('open'));
+
+    document.addEventListener('click', (event) => {
+      if (!els.columnPicker.contains(event.target) && !els.columnsBtn.contains(event.target)) {
+        els.columnPicker.classList.remove('open');
+      }
+    });
+
+    els.columnPicker.addEventListener('change', (event) => {
+      if (!event.target.matches('input[type="checkbox"][data-col]')) return;
+      const col = event.target.dataset.col;
+      if (event.target.checked && !state.visibleColumns.includes(col)) state.visibleColumns.push(col);
+      if (!event.target.checked) state.visibleColumns = state.visibleColumns.filter(c => c !== col);
+      renderTable();
+      renderMobileCards();
+    });
+
+    els.themeBtn.addEventListener('click', () => {
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      document.documentElement.dataset.theme = isDark ? 'light' : 'dark';
+      els.themeBtn.textContent = isDark ? 'Mörkt läge' : 'Ljust läge';
+      localStorage.setItem('logFilterTheme', isDark ? 'light' : 'dark');
+    });
+
+    document.querySelectorAll('.swatch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.documentElement.style.setProperty('--accent', btn.dataset.accent);
+        document.querySelectorAll('.swatch').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        localStorage.setItem('logFilterAccent', btn.dataset.accent);
+      });
+    });
+
+    function restorePreferences() {
+      const theme = localStorage.getItem('logFilterTheme');
+      if (theme) {
+        document.documentElement.dataset.theme = theme;
+        els.themeBtn.textContent = theme === 'dark' ? 'Ljust läge' : 'Mörkt läge';
+      }
+      const accent = localStorage.getItem('logFilterAccent');
+      if (accent) {
+        document.documentElement.style.setProperty('--accent', accent);
+        document.querySelectorAll('.swatch').forEach(btn => btn.classList.toggle('active', btn.dataset.accent === accent));
+      }
+    }
+
+    restorePreferences();
+    renderFilters();
+    renderAll();
+  </script>
+</body>
+</html>
