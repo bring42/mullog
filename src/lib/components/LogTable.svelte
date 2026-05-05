@@ -96,8 +96,10 @@
   }
 
   function stopResize() {
-    window.removeEventListener('pointermove', handleResize);
-    window.removeEventListener('pointerup', stopResize);
+    if (typeof window !== 'undefined' && activeResize) {
+      window.removeEventListener('pointermove', handleResize);
+      window.removeEventListener('pointerup', stopResize);
+    }
     activeResize = null;
   }
 
@@ -105,7 +107,9 @@
     columnWidths = Object.fromEntries(headerColumns.map((header) => [header.key, header.defaultWidth]));
   }
 
-  onDestroy(() => stopResize());
+  onDestroy(() => {
+    if (activeResize) stopResize();
+  });
 </script>
 
 <section class="inspection-surface panel" aria-label="Log inspection table">
