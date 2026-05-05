@@ -104,9 +104,7 @@
     columnWidths = Object.fromEntries(headerColumns.map((header) => [header.key, header.defaultWidth]));
   }
 
-  onDestroy(() => {
-    if (activeResize) stopResize();
-  });
+  onDestroy(() => stopResize());
 </script>
 
 <section class="inspection-surface panel" aria-label="Log inspection table">
