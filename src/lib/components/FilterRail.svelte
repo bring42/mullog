@@ -46,6 +46,8 @@
       : [...visibleColumns, column];
     setVisibleColumns(nextVisibleColumns);
   }
+
+  $: quickSelectCount = Math.min(DEFAULT_VISIBLE_COLUMNS, tableColumns.length);
 </script>
 
 <aside class="filter-rail" class:open aria-label="Filter rail">
@@ -104,9 +106,9 @@
           <button
             class="tiny-button"
             type="button"
-            on:click={() => setVisibleColumns(tableColumns.slice(0, Math.min(DEFAULT_VISIBLE_COLUMNS, tableColumns.length)))}
+            on:click={() => setVisibleColumns(tableColumns.slice(0, quickSelectCount))}
           >
-            TOP {DEFAULT_VISIBLE_COLUMNS}
+            TOP {quickSelectCount}
           </button>
           <button class="tiny-button" type="button" on:click={() => setVisibleColumns([])}>NONE</button>
         </div>
