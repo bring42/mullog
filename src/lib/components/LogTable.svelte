@@ -84,6 +84,8 @@
     };
     window.addEventListener('pointermove', handleResize);
     window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+    window.addEventListener('blur', stopResize);
   }
 
   function handleResize(event: PointerEvent) {
@@ -97,6 +99,8 @@
   function stopResize() {
     window.removeEventListener('pointermove', handleResize);
     window.removeEventListener('pointerup', stopResize);
+    window.removeEventListener('pointercancel', stopResize);
+    window.removeEventListener('blur', stopResize);
     activeResize = null;
   }
 

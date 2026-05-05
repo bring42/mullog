@@ -236,6 +236,9 @@ tr:focus-visible {
 
 .collapsible-summary,
 .rail-section-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   list-style: none;
   cursor: pointer;
 }
