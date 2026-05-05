@@ -6,6 +6,7 @@
   import LogTable from '$lib/components/LogTable.svelte';
   import RowInspector from '$lib/components/RowInspector.svelte';
   import ExportButton from '$lib/components/ExportButton.svelte';
+  import { DEFAULT_VISIBLE_COLUMNS } from '$lib/constants';
   import { demoCsv, demoLog } from '$lib/demo';
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
   import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, downloadCsv, emptyFilters } from '$lib/filters';
@@ -26,8 +27,10 @@
   let selectedRow: LogRow | null = null;
   let detection: DetectionState | null = null;
   let filters: FilterState = { ...emptyFilters, columnFilters: {} };
+  let visibleColumns: string[] = [];
   let filterRailOpen = false;
   let parseError = '';
+  let schemaKey = '';
 
   const encodings = supportedEncodings();
   const parserModes: ParserMode[] = ['auto', 'csv', 'txt'];
@@ -77,6 +80,7 @@
       });
       detection = result.detection;
       rows = result.rows;
+      syncVisibleColumns(result.detection.schema.map((column) => column.name));
       if (selectedRow && !rows.some((row) => row.id === selectedRow?.id)) selectedRow = null;
     } catch (error) {
       parseError = error instanceof Error ? error.message : 'Unknown parser error.';
@@ -101,6 +105,25 @@
   function changeParserMode(nextMode: ParserMode) {
     parserMode = nextMode;
     parseCurrent();
+  }
+
+  function syncVisibleColumns(nextColumns: string[]) {
+    const nextSchemaKey = JSON.stringify(nextColumns);
+    const schemaChanged = nextSchemaKey !== schemaKey;
+    schemaKey = nextSchemaKey;
+
+    if (nextColumns.length === 0) {
+      visibleColumns = [];
+      return;
+    }
+
+    if (!schemaChanged) {
+      visibleColumns = visibleColumns.filter((column) => nextColumns.includes(column));
+      return;
+    }
+
+    const retained = visibleColumns.filter((column) => nextColumns.includes(column));
+    visibleColumns = retained.length > 0 ? retained : nextColumns.slice(0, Math.min(DEFAULT_VISIBLE_COLUMNS, nextColumns.length));
   }
 
   function loadDemo(kind: 'txt' | 'csv') {
@@ -195,7 +218,17 @@
         <button class="tiny-button" on:click={() => loadDemo('csv')}>LOAD CSV DEMO</button>
       </div>
       <DetectionPanel {detection} />
-      <FilterRail {filters} {facets} {detection} open={filterRailOpen} on:change={(event) => (filters = event.detail)} on:close={() => (filterRailOpen = false)} />
+      <FilterRail
+        {filters}
+        {facets}
+        {detection}
+        {tableColumns}
+        {visibleColumns}
+        open={filterRailOpen}
+        on:change={(event) => (filters = event.detail)}
+        on:columnsChange={(event) => (visibleColumns = event.detail)}
+        on:close={() => (filterRailOpen = false)}
+      />
     </section>
 
     <section class="main-zone">
@@ -217,7 +250,14 @@
         {/if}
       </div>
 
-      <LogTable rows={filteredRows} columns={tableColumns} {viewMode} selectedId={selectedRow?.id ?? ''} on:select={(event) => (selectedRow = event.detail)} />
+      <LogTable
+        rows={filteredRows}
+        columns={tableColumns}
+        {visibleColumns}
+        {viewMode}
+        selectedId={selectedRow?.id ?? ''}
+        on:select={(event) => (selectedRow = event.detail)}
+      />
     </section>
   </main>
 
