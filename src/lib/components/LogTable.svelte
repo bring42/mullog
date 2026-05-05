@@ -95,10 +95,8 @@
   }
 
   function stopResize() {
-    if (activeResize) {
-      window.removeEventListener('pointermove', handleResize);
-      window.removeEventListener('pointerup', stopResize);
-    }
+    window.removeEventListener('pointermove', handleResize);
+    window.removeEventListener('pointerup', stopResize);
     activeResize = null;
   }
 
