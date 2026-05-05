@@ -2,14 +2,14 @@
   import type { DetectionState } from '$lib/types';
 
   export let detection: DetectionState | null = null;
-  let expanded = false;
+  let isDetectionExpanded = false;
 
   function pct(value?: number): string {
     return `${Math.round((value ?? 0) * 100)}%`;
   }
 </script>
 
-<details class="panel detection-panel" bind:open={expanded} aria-label="Detection summary">
+<details class="panel detection-panel" bind:open={isDetectionExpanded} aria-label="Detection summary">
   <summary class="panel-header collapsible-summary">
     <span>DETECTION SUMMARY</span>
     <span class="status">{detection ? `${detection.detectedType.toUpperCase()} / ${detection.rowCount.toLocaleString()} ROWS` : 'NO FILE PARSED'}</span>
