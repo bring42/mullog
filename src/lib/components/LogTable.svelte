@@ -27,10 +27,6 @@
   $: headerColumns = buildHeaderColumns(viewMode, structuredColumns);
   $: syncColumnWidths(headerColumns);
 
-  function canUseWindow(): boolean {
-    return typeof window !== 'undefined';
-  }
-
   function displayTimestamp(row: LogRow): string {
     return row.timestamp ? row.timestamp.replace('T', ' ').replace('.000Z', 'Z') : '';
   }
@@ -79,7 +75,6 @@
   }
 
   function startResize(event: PointerEvent, header: HeaderColumn) {
-    if (!canUseWindow()) return;
     event.preventDefault();
     event.stopPropagation();
     activeResize = {
@@ -100,7 +95,7 @@
   }
 
   function stopResize() {
-    if (canUseWindow() && activeResize) {
+    if (activeResize) {
       window.removeEventListener('pointermove', handleResize);
       window.removeEventListener('pointerup', stopResize);
     }

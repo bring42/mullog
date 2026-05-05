@@ -127,7 +127,7 @@
   <details class="panel rail-section" open>
     <summary class="rail-section-summary">
       <span>SEVERITY</span>
-      <b>{filters.severities.length || facets.severities.length}</b>
+      <b>{filters.severities.length}</b>
     </summary>
     <div class="rail-section-body checkbox-stack">
       {#each facets.severities as item}
@@ -143,7 +143,7 @@
   <details class="panel rail-section">
     <summary class="rail-section-summary">
       <span>CATEGORY / SOURCE</span>
-      <b>{filters.categories.length || facets.categories.length}</b>
+      <b>{filters.categories.length}</b>
     </summary>
     <div class="rail-section-body">
       <div class="checkbox-stack tall">
