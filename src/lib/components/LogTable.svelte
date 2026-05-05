@@ -96,7 +96,6 @@
   }
 
   function stopResize() {
-    if (typeof window === 'undefined') return;
     window.removeEventListener('pointermove', handleResize);
     window.removeEventListener('pointerup', stopResize);
     activeResize = null;

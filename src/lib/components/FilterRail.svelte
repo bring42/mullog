@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { DEFAULT_VISIBLE_COLUMNS } from '$lib/constants';
   import type { DetectionState, FilterFacets, FilterState, Severity } from '$lib/types';
 
   export let filters: FilterState;
@@ -100,7 +101,13 @@
       <div class="rail-section-body">
         <div class="column-visibility-toolbar">
           <button class="tiny-button" type="button" on:click={() => setVisibleColumns(tableColumns)}>ALL</button>
-          <button class="tiny-button" type="button" on:click={() => setVisibleColumns(tableColumns.slice(0, Math.min(10, tableColumns.length)))}>TOP 10</button>
+          <button
+            class="tiny-button"
+            type="button"
+            on:click={() => setVisibleColumns(tableColumns.slice(0, Math.min(DEFAULT_VISIBLE_COLUMNS, tableColumns.length)))}
+          >
+            TOP {DEFAULT_VISIBLE_COLUMNS}
+          </button>
           <button class="tiny-button" type="button" on:click={() => setVisibleColumns([])}>NONE</button>
         </div>
         <div class="checkbox-stack tall">

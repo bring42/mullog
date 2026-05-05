@@ -6,6 +6,7 @@
   import LogTable from '$lib/components/LogTable.svelte';
   import RowInspector from '$lib/components/RowInspector.svelte';
   import ExportButton from '$lib/components/ExportButton.svelte';
+  import { DEFAULT_VISIBLE_COLUMNS } from '$lib/constants';
   import { demoCsv, demoLog } from '$lib/demo';
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
   import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, downloadCsv, emptyFilters } from '$lib/filters';
@@ -107,7 +108,7 @@
   }
 
   function syncVisibleColumns(nextColumns: string[]) {
-    const nextSchemaKey = nextColumns.join('\u0000');
+    const nextSchemaKey = JSON.stringify(nextColumns);
     const schemaChanged = nextSchemaKey !== schemaKey;
     schemaKey = nextSchemaKey;
 
@@ -122,7 +123,7 @@
     }
 
     const retained = visibleColumns.filter((column) => nextColumns.includes(column));
-    visibleColumns = retained.length > 0 ? retained : nextColumns.slice(0, Math.min(10, nextColumns.length));
+    visibleColumns = retained.length > 0 ? retained : nextColumns.slice(0, Math.min(DEFAULT_VISIBLE_COLUMNS, nextColumns.length));
   }
 
   function loadDemo(kind: 'txt' | 'csv') {
