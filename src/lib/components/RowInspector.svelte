@@ -4,58 +4,64 @@
 
   export let row: LogRow | null = null;
   const dispatch = createEventDispatcher<{ close: void }>();
+
+  $: open = row !== null;
 </script>
 
-{#if row}
-  <aside class="row-inspector" aria-label="Selected row inspector">
+{#if open}
+  <button class="scrim open" aria-label="Close row inspector" on:click={() => dispatch('close')}></button>
+{/if}
+
+<aside class="row-sheet" class:open aria-hidden={!open}>
+  {#if row}
     <header>
       <div>
-        <p class="label">SELECTED ROW INSPECTOR</p>
-        <h2>LINE {row.lineNumber}</h2>
+        <h2>Row {row.lineNumber}</h2>
+        {#if row.timestampRaw}
+          <div class="sub">{row.timestampRaw}</div>
+        {/if}
       </div>
-      <button class="machine-button secondary" on:click={() => dispatch('close')}>ESC CLOSE</button>
+      <button class="btn ghost" on:click={() => dispatch('close')} aria-label="Close">✕</button>
     </header>
 
-    <section>
-      <h3>RAW LINE</h3>
-      <pre>{row.rawLine}</pre>
-    </section>
+    <div class="body">
+      <section>
+        <h3>Fields</h3>
+        <div class="field-grid">
+          {#each Object.entries(row.fields) as [key, value]}
+            <div class="k">{key}</div>
+            {#if value === ''}
+              <div class="v empty">empty</div>
+            {:else}
+              <div class="v">{value}</div>
+            {/if}
+          {/each}
+        </div>
+      </section>
 
-    <section class="inspector-grid">
-      <div>
-        <h3>PARSED CONTROL FIELDS</h3>
-        <dl class="machine-list">
-          <div><dt>TIME</dt><dd>{row.timestamp ?? 'not detected'}</dd></div>
-          <div><dt>RAW TIME</dt><dd>{row.timestampRaw ?? 'not detected'}</dd></div>
-          <div><dt>SEVERITY</dt><dd>{row.severity}</dd></div>
-          <div><dt>CATEGORY</dt><dd>{row.category}</dd></div>
-        </dl>
-      </div>
+      <section>
+        <h3>Raw line</h3>
+        <pre class="raw">{row.rawLine}</pre>
+      </section>
 
-      <div>
-        <h3>DETECTION NOTES</h3>
-        {#if row.notes.length > 0}
-          <ul class="note-list">
+      {#if row.notes.length > 0}
+        <section>
+          <h3>Parser notes</h3>
+          <ul class="notes-list">
             {#each row.notes as note}
               <li>{note}</li>
             {/each}
           </ul>
-        {:else}
-          <p class="muted">No row-specific notes emitted.</p>
-        {/if}
-      </div>
-    </section>
+        </section>
+      {/if}
+    </div>
+  {/if}
+</aside>
 
-    <section>
-      <h3>PARSED FIELDS</h3>
-      <div class="field-grid">
-        {#each Object.entries(row.fields) as [key, value]}
-          <div>
-            <span>{key}</span>
-            <code>{value}</code>
-          </div>
-        {/each}
-      </div>
-    </section>
-  </aside>
-{/if}
+<style>
+  .scrim {
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+</style>

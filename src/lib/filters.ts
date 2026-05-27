@@ -1,8 +1,7 @@
-import type { FilterFacets, FilterState, LogRow, Severity } from './types';
+import type { FilterFacets, FilterState, LogRow } from './types';
 
 export const emptyFilters: FilterState = {
   search: '',
-  severities: [],
   categories: [],
   from: '',
   to: '',
@@ -16,11 +15,10 @@ export function applyFilters(rows: LogRow[], filters: FilterState): LogRow[] {
 
   return rows.filter((row) => {
     if (search) {
-      const haystack = [row.rawLine, row.severity, row.category, ...Object.values(row.fields)].join('\n').toLowerCase();
+      const haystack = [row.rawLine, row.category, ...Object.values(row.fields)].join('\n').toLowerCase();
       if (!haystack.includes(search)) return false;
     }
 
-    if (filters.severities.length > 0 && !filters.severities.includes(row.severity)) return false;
     if (filters.categories.length > 0 && !filters.categories.includes(row.category)) return false;
 
     if (fromMs && (!row.timestampMs || row.timestampMs < fromMs)) return false;
@@ -36,23 +34,21 @@ export function applyFilters(rows: LogRow[], filters: FilterState): LogRow[] {
 }
 
 export function buildFacets(rows: LogRow[]): FilterFacets {
-  const severities = countValues(rows.map((row) => row.severity)) as Array<{ value: Severity; count: number }>;
   const categories = countValues(rows.map((row) => row.category));
   const columnNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))];
   const columns = columnNames
     .map((column) => ({
       column,
-      values: countValues(rows.map((row) => row.fields[column] ?? '').filter((value) => value !== '')).slice(0, 16)
+      values: countValues(rows.map((row) => row.fields[column] ?? '').filter((value) => value !== '')).slice(0, 50)
     }))
-    .filter((column) => column.values.length > 1 && column.values.length <= 16);
+    .filter((column) => column.values.length > 1 && column.values.length <= 50);
 
-  return { severities, categories, columns };
+  return { categories, columns };
 }
 
 export function describeActiveFilters(filters: FilterState): string[] {
   const tokens: string[] = [];
   if (filters.search.trim()) tokens.push(`search:${filters.search.trim()}`);
-  filters.severities.forEach((severity) => tokens.push(`severity:${severity}`));
   filters.categories.forEach((category) => tokens.push(`category:${category}`));
   if (filters.from) tokens.push(`from:${filters.from}`);
   if (filters.to) tokens.push(`to:${filters.to}`);
@@ -64,10 +60,6 @@ export function describeActiveFilters(filters: FilterState): string[] {
 
 export function clearFilterToken(filters: FilterState, token: string): FilterState {
   if (token.startsWith('search:')) return { ...filters, search: '' };
-  if (token.startsWith('severity:')) {
-    const value = token.replace('severity:', '') as Severity;
-    return { ...filters, severities: filters.severities.filter((severity) => severity !== value) };
-  }
   if (token.startsWith('category:')) {
     const value = token.replace('category:', '');
     return { ...filters, categories: filters.categories.filter((category) => category !== value) };
@@ -92,9 +84,9 @@ export function clearFilterToken(filters: FilterState, token: string): FilterSta
 }
 
 export function rowsToCsv(rows: LogRow[]): string {
-  const reserved = new Set(['line_number', 'timestamp', 'severity', 'category', 'raw']);
+  const reserved = new Set(['line_number', 'timestamp', 'category', 'raw']);
   const fieldNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))].filter((name) => !reserved.has(name));
-  const headers = ['line_number', 'timestamp_iso', 'timestamp_raw', 'severity', 'category', ...fieldNames, 'raw_line', 'detection_notes'];
+  const headers = ['line_number', 'timestamp_iso', 'timestamp_raw', 'category', ...fieldNames, 'raw_line'];
   const csvRows = [headers, ...rows.map((row) => headers.map((header) => valueForHeader(row, header)))];
   return csvRows.map((row) => row.map(escapeCsv).join(',')).join('\n');
 }
@@ -127,10 +119,8 @@ function valueForHeader(row: LogRow, header: string): string {
   if (header === 'line_number') return String(row.lineNumber);
   if (header === 'timestamp_iso') return row.timestamp ?? '';
   if (header === 'timestamp_raw') return row.timestampRaw ?? '';
-  if (header === 'severity') return row.severity;
   if (header === 'category') return row.category;
   if (header === 'raw_line') return row.rawLine;
-  if (header === 'detection_notes') return row.notes.join(' | ');
   return row.fields[header] ?? '';
 }
 

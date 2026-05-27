@@ -1,11 +1,9 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { DEFAULT_VISIBLE_COLUMNS } from '$lib/constants';
-  import type { DetectionState, FilterFacets, FilterState, Severity } from '$lib/types';
+  import type { FilterFacets, FilterState } from '$lib/types';
 
   export let filters: FilterState;
   export let facets: FilterFacets;
-  export let detection: DetectionState | null = null;
   export let tableColumns: string[] = [];
   export let visibleColumns: string[] = [];
   export let open = false;
@@ -16,198 +14,95 @@
     dispatch('change', next);
   }
 
-  function toggleSeverity(value: Severity) {
-    const severities = filters.severities.includes(value)
-      ? filters.severities.filter((severity) => severity !== value)
-      : [...filters.severities, value];
-    setFilters({ ...filters, severities });
-  }
-
-  function toggleCategory(value: string) {
-    const categories = filters.categories.includes(value)
-      ? filters.categories.filter((category) => category !== value)
-      : [...filters.categories, value];
-    setFilters({ ...filters, categories });
-  }
-
-  function toggleColumn(column: string, value: string) {
+  function toggleColumnFilter(column: string, value: string) {
     const selected = filters.columnFilters[column] ?? [];
     const nextValues = selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value];
     setFilters({ ...filters, columnFilters: { ...filters.columnFilters, [column]: nextValues } });
   }
 
-  function setVisibleColumns(nextVisibleColumns: string[]) {
-    dispatch('columnsChange', nextVisibleColumns);
-  }
-
   function toggleVisibleColumn(column: string) {
-    const nextVisibleColumns = visibleColumns.includes(column)
+    const next = visibleColumns.includes(column)
       ? visibleColumns.filter((item) => item !== column)
       : [...visibleColumns, column];
-    setVisibleColumns(nextVisibleColumns);
+    dispatch('columnsChange', next);
   }
-
-  $: topColumnsCount = Math.min(DEFAULT_VISIBLE_COLUMNS, tableColumns.length);
 </script>
 
-<aside class="filter-rail" class:open aria-label="Filter rail">
-  <div class="rail-mobile-handle">
-    <button class="tiny-button" on:click={() => dispatch('close')}>CLOSE FILTERS</button>
+<aside class="filters" class:open aria-label="Filters">
+  <div class="filters-group">
+    <div class="group-label">Search</div>
+    <input
+      id="search-input"
+      class="input"
+      type="search"
+      placeholder="Press / to focus"
+      value={filters.search}
+      on:input={(event) => setFilters({ ...filters, search: (event.currentTarget as HTMLInputElement).value })}
+    />
   </div>
 
-  <details class="panel rail-section" open>
-    <summary class="rail-section-summary">
-      <span>SEARCH + TIME</span>
-      <b>{filters.search || filters.from || filters.to ? 'ACTIVE' : 'IDLE'}</b>
-    </summary>
-    <div class="rail-section-body search-panel">
-      <label class="control-label" for="search-input">FREE TEXT SEARCH</label>
+  <div class="filters-group">
+    <div class="group-label">Time range</div>
+    <div class="date-grid">
       <input
-        id="search-input"
-        class="machine-input"
-        type="search"
-        placeholder="/ TO FOCUS"
-        value={filters.search}
-        on:input={(event) => setFilters({ ...filters, search: (event.currentTarget as HTMLInputElement).value })}
+        class="input"
+        type="datetime-local"
+        aria-label="From"
+        value={filters.from}
+        on:input={(event) => setFilters({ ...filters, from: (event.currentTarget as HTMLInputElement).value })}
       />
-
-      <div class="date-grid">
-        <label>
-          <span>FROM</span>
-          <input
-            class="machine-input"
-            type="datetime-local"
-            value={filters.from}
-            on:input={(event) => setFilters({ ...filters, from: (event.currentTarget as HTMLInputElement).value })}
-          />
-        </label>
-        <label>
-          <span>TO</span>
-          <input
-            class="machine-input"
-            type="datetime-local"
-            value={filters.to}
-            on:input={(event) => setFilters({ ...filters, to: (event.currentTarget as HTMLInputElement).value })}
-          />
-        </label>
-      </div>
+      <input
+        class="input"
+        type="datetime-local"
+        aria-label="To"
+        value={filters.to}
+        on:input={(event) => setFilters({ ...filters, to: (event.currentTarget as HTMLInputElement).value })}
+      />
     </div>
-  </details>
+  </div>
 
   {#if tableColumns.length > 0}
-    <details class="panel rail-section" open>
-      <summary class="rail-section-summary">
-        <span>TABLE COLUMNS</span>
-        <b>{visibleColumns.length}/{tableColumns.length}</b>
+    <details class="facet" open>
+      <summary>
+        Columns
+        <span class="meta">{visibleColumns.length}/{tableColumns.length}</span>
       </summary>
-      <div class="rail-section-body">
-        <div class="column-visibility-toolbar">
-          <button class="tiny-button" type="button" on:click={() => setVisibleColumns(tableColumns)}>ALL</button>
-          <button
-            class="tiny-button"
-            type="button"
-            on:click={() => setVisibleColumns(tableColumns.slice(0, topColumnsCount))}
-          >
-            TOP {topColumnsCount}
-          </button>
-          <button class="tiny-button" type="button" on:click={() => setVisibleColumns([])}>NONE</button>
+      <div class="facet-body">
+        <div class="columns-toolbar">
+          <button type="button" on:click={() => dispatch('columnsChange', tableColumns)}>All</button>
+          <button type="button" on:click={() => dispatch('columnsChange', [])}>None</button>
         </div>
-        <div class="checkbox-stack tall">
-          {#each tableColumns as column}
-            <label class="check-row">
-              <input type="checkbox" checked={visibleColumns.includes(column)} on:change={() => toggleVisibleColumn(column)} />
-              <span>{column}</span>
-            </label>
-          {/each}
-        </div>
-      </div>
-    </details>
-  {/if}
-
-  <details class="panel rail-section" open>
-    <summary class="rail-section-summary">
-      <span>SEVERITY</span>
-      <b>{filters.severities.length}</b>
-    </summary>
-    <div class="rail-section-body checkbox-stack">
-      {#each facets.severities as item}
-        <label class="check-row severity-{item.value.toLowerCase()}">
-          <input type="checkbox" checked={filters.severities.includes(item.value)} on:change={() => toggleSeverity(item.value)} />
-          <span>{item.value}</span>
-          <b>{item.count}</b>
-        </label>
-      {/each}
-    </div>
-  </details>
-
-  <details class="panel rail-section">
-    <summary class="rail-section-summary">
-      <span>CATEGORY / SOURCE</span>
-      <b>{filters.categories.length}</b>
-    </summary>
-    <div class="rail-section-body">
-      <div class="checkbox-stack tall">
-        {#each facets.categories as item}
-          <label class="check-row">
-            <input type="checkbox" checked={filters.categories.includes(item.value)} on:change={() => toggleCategory(item.value)} />
-            <span>{item.value}</span>
-            <b>{item.count}</b>
+        {#each tableColumns as column}
+          <label class="facet-row">
+            <input type="checkbox" checked={visibleColumns.includes(column)} on:change={() => toggleVisibleColumn(column)} />
+            <span class="label">{column}</span>
           </label>
         {/each}
       </div>
-    </div>
-  </details>
-
-  {#if facets.columns.length > 0}
-    <details class="panel rail-section">
-      <summary class="rail-section-summary">
-        <span>CSV COLUMN FACETS</span>
-        <b>{facets.columns.length}</b>
-      </summary>
-      <div class="rail-section-body column-facets">
-        {#each facets.columns as column}
-          <details>
-            <summary>{column.column}</summary>
-            <div class="checkbox-stack compact">
-              {#each column.values as item}
-                <label class="check-row">
-                  <input
-                    type="checkbox"
-                    checked={(filters.columnFilters[column.column] ?? []).includes(item.value)}
-                    on:change={() => toggleColumn(column.column, item.value)}
-                  />
-                  <span>{item.value}</span>
-                  <b>{item.count}</b>
-                </label>
-              {/each}
-            </div>
-          </details>
-        {/each}
-      </div>
     </details>
   {/if}
 
-  <details class="panel rail-section warnings-panel">
-    <summary class="rail-section-summary">
-      <span>PARSE WARNINGS</span>
-      <b>{detection?.warnings.length ?? 0}</b>
-    </summary>
-    <div class="rail-section-body">
-      {#if detection && detection.warnings.length > 0}
-        <div class="warning-list">
-          {#each detection.warnings.slice(0, 30) as warning}
-            <article class="warning-item {warning.level}">
-              <strong>{warning.type}</strong>
-              <p>{warning.lineNumber ? `L${warning.lineNumber}: ` : ''}{warning.message}</p>
-            </article>
-          {/each}
-          {#if detection.warnings.length > 30}
-            <p class="muted">Showing first 30 warnings.</p>
-          {/if}
-        </div>
-      {:else}
-        <p class="muted">No parse warnings emitted.</p>
-      {/if}
-    </div>
-  </details>
+  {#each facets.columns as column}
+    <details class="facet">
+      <summary>
+        {column.column}
+        <span class="meta">{column.values.length}</span>
+      </summary>
+      <div class="facet-body">
+        {#each column.values as item}
+          <label class="facet-row">
+            <input
+              type="checkbox"
+              checked={(filters.columnFilters[column.column] ?? []).includes(item.value)}
+              on:change={() => toggleColumnFilter(column.column, item.value)}
+            />
+            <span class="label" title={item.value}>{item.value}</span>
+            <span class="count">{item.count}</span>
+          </label>
+        {/each}
+      </div>
+    </details>
+  {/each}
+
+  <button class="btn ghost mobile-only" on:click={() => dispatch('close')} style="margin-top: 8px;">Close filters</button>
 </aside>

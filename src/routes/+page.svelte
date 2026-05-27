@@ -6,44 +6,39 @@
   import LogTable from '$lib/components/LogTable.svelte';
   import RowInspector from '$lib/components/RowInspector.svelte';
   import ExportButton from '$lib/components/ExportButton.svelte';
-  import { DEFAULT_VISIBLE_COLUMNS } from '$lib/constants';
-  import { demoCsv, demoLog } from '$lib/demo';
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
-  import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, downloadCsv, emptyFilters } from '$lib/filters';
+  import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters } from '$lib/filters';
   import { parseLogText } from '$lib/parser';
-  import type { DetectionState, EncodingName, FilterState, LogRow, ParserMode, ParseWarning, ViewMode } from '$lib/types';
+  import type { DetectionState, EncodingName, FilterState, LogRow, ParseWarning } from '$lib/types';
 
   let currentBuffer: ArrayBuffer | null = null;
-  let currentText = demoLog;
-  let fileName = 'demo-log.txt';
-  let fileSize = new Blob([demoLog]).size;
+  let currentText = '';
+  let fileName = '';
+  let fileSize = 0;
   let encoding: EncodingName = 'utf-8';
-  let encodingConfidence = 0.92;
-  let encodingNotes = ['Demo text injected as UTF-8. Upload a local file to replace it.'];
+  let encodingConfidence = 1;
+  let encodingNotes: string[] = [];
   let encodingWarnings: ParseWarning[] = [];
-  let parserMode: ParserMode = 'auto';
-  let viewMode: ViewMode = 'hybrid';
   let rows: LogRow[] = [];
   let selectedRow: LogRow | null = null;
   let detection: DetectionState | null = null;
   let filters: FilterState = { ...emptyFilters, columnFilters: {} };
   let visibleColumns: string[] = [];
-  let filterRailOpen = false;
+  let filtersOpen = false;
   let parseError = '';
   let schemaKey = '';
 
   const encodings = supportedEncodings();
-  const parserModes: ParserMode[] = ['auto', 'csv', 'txt'];
-  const viewModes: ViewMode[] = ['raw', 'structured', 'hybrid'];
 
+  $: hasFile = currentText.length > 0;
   $: filteredRows = applyFilters(rows, filters);
   $: facets = buildFacets(rows);
   $: activeTokens = describeActiveFilters(filters);
   $: tableColumns = detection?.schema.map((column) => column.name) ?? [];
+  $: timestampColumn = detection?.schema.find((column) => column.role === 'timestamp')?.name;
   $: exportName = `${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered.csv`;
 
   onMount(() => {
-    parseCurrent();
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
   });
@@ -76,7 +71,7 @@
         encodingConfidence,
         encodingNotes,
         encodingWarnings,
-        parserMode
+        parserMode: 'auto'
       });
       detection = result.detection;
       rows = result.rows;
@@ -92,19 +87,10 @@
     if (currentBuffer) {
       currentText = decodeBuffer(currentBuffer, encoding);
       encodingConfidence = 1;
-      encodingNotes = [`Manual encoding override applied: ${encoding}. File was reparsed from the original ArrayBuffer.`];
+      encodingNotes = [`Manual override: ${encoding}.`];
       encodingWarnings = [];
-    } else {
-      encodingConfidence = 1;
-      encodingNotes = [`Manual encoding override applied to demo text: ${encoding}.`];
-      encodingWarnings = [];
+      parseCurrent();
     }
-    parseCurrent();
-  }
-
-  function changeParserMode(nextMode: ParserMode) {
-    parserMode = nextMode;
-    parseCurrent();
   }
 
   function syncVisibleColumns(nextColumns: string[]) {
@@ -122,148 +108,140 @@
       return;
     }
 
-    const retained = visibleColumns.filter((column) => nextColumns.includes(column));
-    visibleColumns = retained.length > 0 ? retained : nextColumns.slice(0, Math.min(DEFAULT_VISIBLE_COLUMNS, nextColumns.length));
+    visibleColumns = nextColumns;
   }
 
-  function loadDemo(kind: 'txt' | 'csv') {
+  function clearFile() {
     currentBuffer = null;
-    currentText = kind === 'txt' ? demoLog : demoCsv;
-    fileName = kind === 'txt' ? 'demo-log.txt' : 'demo-events.csv';
-    fileSize = new Blob([currentText]).size;
-    encoding = 'utf-8';
-    encodingConfidence = 0.92;
-    encodingNotes = ['Demo data injected as UTF-8. Upload a local file to replace it.'];
-    encodingWarnings = [];
-    parserMode = 'auto';
+    currentText = '';
+    fileName = '';
+    fileSize = 0;
+    rows = [];
+    detection = null;
     filters = { ...emptyFilters, columnFilters: {} };
     selectedRow = null;
-    parseCurrent();
+    visibleColumns = [];
+    schemaKey = '';
+    parseError = '';
+  }
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
   function handleKeyboard(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
     const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
 
-    if (event.key === '/' && !typing) {
+    if (event.key === '/' && !typing && hasFile) {
       event.preventDefault();
       document.getElementById('search-input')?.focus();
     }
 
     if (event.key === 'Escape') {
-      selectedRow = null;
-      filterRailOpen = false;
-    }
-
-    if ((event.key === 'e' || event.key === 'E') && !typing) {
-      event.preventDefault();
-      if (filteredRows.length > 0) downloadCsv(filteredRows, exportName);
+      if (selectedRow) selectedRow = null;
+      else if (filtersOpen) filtersOpen = false;
     }
   }
 </script>
 
 <svelte:head>
-  <title>Log Inspection Workbench</title>
+  <title>{fileName ? `${fileName} · mullog` : 'mullog'}</title>
 </svelte:head>
 
-<div class="app-shell">
-  <header class="command-bar">
-    <div class="brand-block">
-      <span class="system-mark">LOG//WB</span>
-      <div>
-        <p class="label">LOCAL TECHNICAL LOG INSPECTION</p>
-        <h1>{fileName}</h1>
-      </div>
+{#if !hasFile}
+  <div class="empty-shell">
+    <div class="empty-card">
+      <h1>mullog</h1>
+      <p class="lede">Local CSV &amp; log inspector. Files never leave your browser.</p>
+      <FileDropzone on:files={handleFiles} />
+      <div class="empty-foot">Supports .csv, .tsv, .log, .txt — UTF-8, Windows-1252, and ISO-8859-1.</div>
     </div>
+  </div>
+{:else}
+  <div class="app-shell">
+    <header class="toolbar">
+      <div class="file-block">
+        <div class="file-name" title={fileName}>{fileName}</div>
+        <div class="file-meta">{formatSize(fileSize)} · {rows.length.toLocaleString()} rows</div>
+      </div>
 
-    <div class="command-controls">
-      <label>
-        <span>TYPE</span>
-        <output>{detection?.detectedType.toUpperCase() ?? 'UNKNOWN'}</output>
-      </label>
-      <label>
-        <span>ENCODING</span>
-        <select class="machine-select" value={encoding} on:change={(event) => changeEncoding((event.currentTarget as HTMLSelectElement).value as EncodingName)}>
+      <div class="toolbar-actions">
+        <button class="btn ghost mobile-only" type="button" on:click={() => (filtersOpen = true)} aria-label="Open filters">
+          ☰
+        </button>
+
+        <span class="row-count-pill"><b>{filteredRows.length.toLocaleString()}</b> shown</span>
+
+        <select
+          class="select"
+          value={encoding}
+          on:change={(event) => changeEncoding((event.currentTarget as HTMLSelectElement).value as EncodingName)}
+          title="Encoding"
+        >
           {#each encodings as item}
             <option value={item}>{item}</option>
           {/each}
         </select>
-      </label>
-      <label>
-        <span>PARSER MODE</span>
-        <select class="machine-select" value={parserMode} on:change={(event) => changeParserMode((event.currentTarget as HTMLSelectElement).value as ParserMode)}>
-          {#each parserModes as item}
-            <option value={item}>{item}</option>
-          {/each}
-        </select>
-      </label>
-      <label>
-        <span>VIEW</span>
-        <select class="machine-select" bind:value={viewMode}>
-          {#each viewModes as item}
-            <option value={item}>{item}</option>
-          {/each}
-        </select>
-      </label>
-      <ExportButton rows={filteredRows} fileName={exportName} />
-      <button class="machine-button secondary mobile-filter-button" on:click={() => (filterRailOpen = true)}>FILTERS</button>
-    </div>
-  </header>
 
-  <main class="workbench-grid">
-    <section class="left-zone">
-      <FileDropzone on:files={handleFiles} />
-      <div class="demo-switches">
-        <button class="tiny-button" on:click={() => loadDemo('txt')}>LOAD TXT DEMO</button>
-        <button class="tiny-button" on:click={() => loadDemo('csv')}>LOAD CSV DEMO</button>
+        <DetectionPanel {detection} />
+        <ExportButton rows={filteredRows} fileName={exportName} />
+        <button class="btn ghost" type="button" on:click={clearFile} title="Load another file">New file</button>
       </div>
-      <DetectionPanel {detection} />
+    </header>
+
+    {#if parseError}
+      <div class="parse-error"><strong>Parser error:</strong> {parseError}</div>
+    {/if}
+
+    <div class="main">
+      {#if filtersOpen}
+        <button class="scrim open mobile-only" aria-label="Close filters" on:click={() => (filtersOpen = false)}></button>
+      {/if}
+
       <FilterRail
         {filters}
         {facets}
-        {detection}
         {tableColumns}
         {visibleColumns}
-        open={filterRailOpen}
+        open={filtersOpen}
         on:change={(event) => (filters = event.detail)}
         on:columnsChange={(event) => (visibleColumns = event.detail)}
-        on:close={() => (filterRailOpen = false)}
+        on:close={() => (filtersOpen = false)}
       />
-    </section>
 
-    <section class="main-zone">
-      {#if parseError}
-        <div class="panel parser-error">
-          <strong>PARSER ERROR</strong>
-          <p>{parseError}</p>
-        </div>
-      {/if}
-
-      <div class="active-filter-strip" class:empty={activeTokens.length === 0}>
-        <span>ACTIVE FILTERS</span>
-        {#if activeTokens.length === 0}
-          <b>NONE</b>
-        {:else}
-          {#each activeTokens as token}
-            <button on:click={() => (filters = clearFilterToken(filters, token))}>{token} x</button>
-          {/each}
+      <section class="table-region">
+        {#if activeTokens.length > 0}
+          <div class="active-filters">
+            {#each activeTokens as token}
+              <button class="chip" on:click={() => (filters = clearFilterToken(filters, token))}>
+                <span>{token}</span>
+                <span class="x">×</span>
+              </button>
+            {/each}
+          </div>
         {/if}
-      </div>
 
-      <LogTable
-        rows={filteredRows}
-        columns={tableColumns}
-        {visibleColumns}
-        {viewMode}
-        selectedId={selectedRow?.id ?? ''}
-        on:select={(event) => (selectedRow = event.detail)}
-      />
-    </section>
-  </main>
+        <LogTable
+          rows={filteredRows}
+          columns={tableColumns}
+          {visibleColumns}
+          {timestampColumn}
+          selectedId={selectedRow?.id ?? ''}
+          on:select={(event) => (selectedRow = event.detail)}
+        />
+      </section>
+    </div>
 
-  <RowInspector row={selectedRow} on:close={() => (selectedRow = null)} />
+    <RowInspector row={selectedRow} on:close={() => (selectedRow = null)} />
+  </div>
+{/if}
 
-  {#if activeTokens.length > 0}
-    <ExportButton rows={filteredRows} fileName={exportName} sticky />
-  {/if}
-</div>
+<style>
+  .scrim {
+    border: none;
+    padding: 0;
+  }
+</style>

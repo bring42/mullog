@@ -1,89 +1,72 @@
 <script lang="ts">
   import type { DetectionState } from '$lib/types';
+  import { onMount } from 'svelte';
 
   export let detection: DetectionState | null = null;
-  let isDetectionExpanded = false;
+
+  let open = false;
+  let container: HTMLDivElement;
 
   function pct(value?: number): string {
     return `${Math.round((value ?? 0) * 100)}%`;
   }
+
+  function onDocClick(event: MouseEvent) {
+    if (!open) return;
+    if (container && !container.contains(event.target as Node)) open = false;
+  }
+
+  onMount(() => {
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  });
+
+  $: warningCount = detection?.warnings.length ?? 0;
 </script>
 
-<details class="panel detection-panel" bind:open={isDetectionExpanded} aria-label="Detection summary">
-  <summary class="panel-header collapsible-summary">
-    <span>DETECTION SUMMARY</span>
-    <span class="status">{detection ? `${detection.detectedType.toUpperCase()} / ${detection.rowCount.toLocaleString()} ROWS` : 'NO FILE PARSED'}</span>
-  </summary>
+<div class="detection-popover" bind:this={container}>
+  <button class="btn ghost" type="button" on:click={() => (open = !open)} aria-expanded={open}>
+    {#if detection}
+      {detection.detectedType.toUpperCase()} · {detection.rowCount.toLocaleString()}
+    {:else}
+      Detection
+    {/if}
+    {#if warningCount > 0}
+      <span style="color: var(--warn); font-weight: 600;">⚠ {warningCount}</span>
+    {/if}
+  </button>
 
-  {#if detection}
-    <div class="detection-body">
-      <div class="assumption-grid">
-        {#each detection.assumptions as assumption}
-          <article class="assumption" class:low={assumption.confidence < 0.6}>
-            <div class="assumption-top">
-              <span>{assumption.label}</span>
-              <strong>{pct(assumption.confidence)}</strong>
-            </div>
-            <p>{assumption.value}</p>
-            <meter min="0" max="1" value={assumption.confidence}>{pct(assumption.confidence)}</meter>
-          </article>
-        {/each}
-      </div>
-
-      <dl class="machine-list">
-        <div>
-          <dt>ROWS</dt>
-          <dd>{detection.rowCount.toLocaleString()}</dd>
-        </div>
-        <div>
-          <dt>TYPE</dt>
-          <dd>{detection.detectedType.toUpperCase()}</dd>
-        </div>
-        <div>
-          <dt>ENCODING</dt>
-          <dd>{detection.encoding} / {pct(detection.encodingConfidence)}</dd>
-        </div>
+  {#if open && detection}
+    <div class="panel" role="dialog">
+      <h4>Detection</h4>
+      <dl>
+        <dt>Rows</dt>
+        <dd>{detection.rowCount.toLocaleString()}</dd>
+        <dt>Type</dt>
+        <dd>{detection.detectedType.toUpperCase()}</dd>
+        <dt>Encoding</dt>
+        <dd>{detection.encoding} ({pct(detection.encodingConfidence)})</dd>
         {#if detection.delimiter}
-          <div>
-            <dt>DELIMITER</dt>
-            <dd>{detection.delimiter} / {pct(detection.delimiterConfidence)}</dd>
-          </div>
+          <dt>Delimiter</dt>
+          <dd>{detection.delimiter} ({pct(detection.delimiterConfidence)})</dd>
         {/if}
         {#if typeof detection.hasHeader === 'boolean'}
-          <div>
-            <dt>HEADER</dt>
-            <dd>{detection.hasHeader ? 'YES' : 'NO'}</dd>
-          </div>
+          <dt>Header</dt>
+          <dd>{detection.hasHeader ? 'present' : 'not detected'}</dd>
         {/if}
-        <div>
-          <dt>TIMESTAMP</dt>
-          <dd>{detection.timestampFormat ?? 'NOT DETECTED'}</dd>
-        </div>
+        <dt>Timestamp</dt>
+        <dd>{detection.timestampFormat ?? 'not detected'}</dd>
       </dl>
-
-      <div class="schema-box">
-        <h3>SCHEMA / ROLES</h3>
-        {#if detection.schema.length === 0}
-          <p class="muted">No schema inferred.</p>
-        {:else}
-          <div class="schema-list">
-            {#each detection.schema as column}
-              <span title={`${column.uniqueCount} unique / ${column.emptyCount} empty`}>
-                {column.name}<em>{column.role ?? column.inferredType}</em>
-              </span>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
-      <div class="notes-box">
-        <h3>ENCODING NOTES</h3>
-        {#each detection.encodingNotes as note}
-          <p>{note}</p>
-        {/each}
-      </div>
+      {#if warningCount > 0}
+        <div class="warn-line">
+          {warningCount} parser warning{warningCount === 1 ? '' : 's'}.
+          {#if detection.warnings[0]}
+            <div style="margin-top: 4px; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px;">
+              {detection.warnings[0].lineNumber ? `L${detection.warnings[0].lineNumber}: ` : ''}{detection.warnings[0].message}
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
-  {:else}
-    <p class="muted">No file parsed yet.</p>
   {/if}
-</details>
+</div>

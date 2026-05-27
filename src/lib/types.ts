@@ -1,8 +1,6 @@
 export type EncodingName = 'utf-8' | 'windows-1252' | 'iso-8859-1';
 export type ParserMode = 'auto' | 'csv' | 'txt';
 export type DetectedType = 'csv' | 'txt' | 'unknown';
-export type ViewMode = 'raw' | 'structured' | 'hybrid';
-export type Severity = 'FATAL' | 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE' | 'UNKNOWN';
 export type WarningLevel = 'error' | 'warning' | 'info';
 
 export interface ParseWarning {
@@ -27,7 +25,7 @@ export interface ColumnMeta {
   emptyCount: number;
   sampleValues: string[];
   isCategorical: boolean;
-  role?: 'timestamp' | 'severity' | 'category' | 'message' | 'raw' | 'lineNumber';
+  role?: 'timestamp' | 'category' | 'message' | 'raw' | 'lineNumber';
 }
 
 export interface DetectionAssumption {
@@ -51,7 +49,6 @@ export interface DetectionState {
   schema: ColumnMeta[];
   timestampFormat?: string;
   timestampConfidence?: number;
-  severityLevels: Severity[];
   categories: string[];
   rowCount: number;
   warnings: ParseWarning[];
@@ -66,7 +63,6 @@ export interface LogRow {
   timestamp?: string;
   timestampRaw?: string;
   timestampMs?: number;
-  severity: Severity;
   category: string;
   source?: string;
   notes: string[];
@@ -80,7 +76,6 @@ export interface ParseResult {
 
 export interface FilterState {
   search: string;
-  severities: Severity[];
   categories: string[];
   from: string;
   to: string;
@@ -88,7 +83,6 @@ export interface FilterState {
 }
 
 export interface FilterFacets {
-  severities: Array<{ value: Severity; count: number }>;
   categories: Array<{ value: string; count: number }>;
   columns: Array<{ column: string; values: Array<{ value: string; count: number }> }>;
 }
