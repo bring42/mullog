@@ -14,7 +14,11 @@ export function supportedEncodings(): EncodingName[] {
 }
 
 export function decodeBuffer(buffer: ArrayBuffer, encoding: EncodingName): string {
-  return new TextDecoder(encoding, { fatal: false }).decode(buffer);
+  // Strip a UTF-8 BOM at the byte level so it never gets re-decoded as
+  // "ï»¿" when the file is read as Windows-1252 / ISO-8859-1.
+  const bytes = new Uint8Array(buffer);
+  const start = bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? 3 : 0;
+  return new TextDecoder(encoding, { fatal: false }).decode(bytes.subarray(start));
 }
 
 export function detectEncoding(buffer: ArrayBuffer): EncodingDetection {

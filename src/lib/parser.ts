@@ -453,11 +453,15 @@ function detectHeader(records: CsvRecord[]): { hasHeader: boolean; confidence: n
   if (records.length < 2) return { hasHeader: false, confidence: 0.2 };
   const first = records[0].fields.map((field) => field.trim());
   const second = records[1].fields.map((field) => field.trim());
-  const uniqueFirst = new Set(first.filter(Boolean)).size === first.filter(Boolean).length;
-  const firstLooksNamed = first.filter((field) => /^[\p{L}_][\p{L}\p{N}_ .:/#-]{0,80}$/u.test(field) && !looksNumeric(field)).length / Math.max(first.length, 1);
-  const secondDataLike = second.filter((field) => looksNumeric(field) || parseTimestamp(field) || field.length > 20).length / Math.max(second.length, 1);
-  const confidence = round((uniqueFirst ? 0.25 : 0) + firstLooksNamed * 0.45 + secondDataLike * 0.3);
-  return { hasHeader: confidence >= 0.58, confidence };
+  const firstFilled = first.filter(Boolean);
+  if (firstFilled.length === 0) return { hasHeader: false, confidence: 0.1 };
+  const uniqueFirst = new Set(firstFilled).size === firstFilled.length;
+  // "Not data": non-empty, not a number, not a timestamp. Tolerant of mojibake
+  // and punctuation in real-world column names like "Larmhändelse nr#".
+  const firstNotData = first.filter((field) => field !== '' && !looksNumeric(field) && !parseTimestamp(field)).length / first.length;
+  const secondLooksData = second.filter((field) => looksNumeric(field) || parseTimestamp(field) || field.length > 20).length / Math.max(second.length, 1);
+  const confidence = round((uniqueFirst ? 0.25 : 0) + firstNotData * 0.55 + secondLooksData * 0.2);
+  return { hasHeader: confidence >= 0.55, confidence };
 }
 
 function inferSchema(headers: string[], records: CsvRecord[]): ColumnMeta[] {
