@@ -15,6 +15,10 @@
   --warn-soft: #fbeedc;
   --error: #b1311f;
   --error-soft: #fadcd6;
+  --row-error: #fdf2ef;
+  --row-warn: #fdf7ec;
+  --row-fatal: #fbe4df;
+  --mark: #ffe79a;
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-1: 0 1px 2px rgba(20, 24, 40, 0.04), 0 1px 1px rgba(20, 24, 40, 0.03);
@@ -364,12 +368,112 @@ table.log tbody tr:nth-child(even) {
   background: #fbfaf7;
 }
 
+table.log tbody tr.sev-warn {
+  background: var(--row-warn);
+}
+
+table.log tbody tr.sev-error {
+  background: var(--row-error);
+}
+
+table.log tbody tr.sev-fatal {
+  background: var(--row-fatal);
+}
+
+/* Severity edge marker, drawn on the first cell so it works in table layout. */
+table.log tbody tr.sev-warn td.line-num {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+table.log tbody tr.sev-error td.line-num,
+table.log tbody tr.sev-fatal td.line-num {
+  box-shadow: inset 3px 0 0 var(--error);
+}
+
 table.log tbody tr:hover {
   background: var(--bg-row-hover);
 }
 
 table.log tbody tr.selected {
   background: var(--bg-row-selected);
+}
+
+table.log tbody tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The message column takes every pixel the other columns don't need. */
+table.log.has-flex th.message,
+table.log.has-flex td.message {
+  width: 100%;
+  max-width: 0;
+}
+
+table.log td.severity {
+  width: 1%;
+}
+
+table.log mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.sev-tag {
+  display: inline-block;
+  min-width: 46px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.sev-tag.sev-info {
+  background: var(--bg-muted);
+  color: var(--text);
+}
+
+.sev-tag.sev-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sev-tag.sev-error {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.sev-tag.sev-fatal {
+  background: var(--error);
+  color: #fff;
+}
+
+.sev-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border-strong);
+}
+
+.sev-dot.sev-info {
+  background: var(--text-muted);
+}
+
+.sev-dot.sev-warn {
+  background: var(--warn);
+}
+
+.sev-dot.sev-error,
+.sev-dot.sev-fatal {
+  background: var(--error);
 }
 
 table.log tbody tr.malformed td {
@@ -493,10 +597,18 @@ table.log tbody tr.malformed td {
 }
 
 .facet-row .count {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+.facet-row .count .of {
+  color: var(--text-faint);
+}
+
+.facet-row.zero {
+  opacity: 0.5;
 }
 
 .columns-toolbar {
@@ -764,8 +876,80 @@ table.log tbody tr.malformed td {
     max-width: 220px;
   }
 
+  table.log.has-flex td.message {
+    max-width: 0;
+  }
+
   .toolbar .file-meta {
     display: none;
+  }
+}
+
+/* Phones: each row becomes a two-line card - meta on top, the message wrapped below. */
+@media (max-width: 640px) {
+  table.log,
+  table.log tbody {
+    display: block;
+  }
+
+  table.log thead {
+    display: none;
+  }
+
+  table.log tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px 8px;
+    padding: 8px 12px 9px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  table.log tbody td {
+    display: block;
+    padding: 0;
+    border: none;
+    width: auto;
+    max-width: 100%;
+  }
+
+  table.log tbody td.severity {
+    width: auto;
+  }
+
+  table.log tbody td.line-num {
+    width: auto;
+    font-size: 11px;
+    box-shadow: none !important;
+  }
+
+  table.log tbody tr.sev-warn {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+
+  table.log tbody tr.sev-error,
+  table.log tbody tr.sev-fatal {
+    box-shadow: inset 3px 0 0 var(--error);
+  }
+
+  table.log tbody td.meta {
+    max-width: 45%;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  table.log tbody td.message,
+  table.log.has-flex tbody td.message {
+    width: auto;
+    max-width: 100%;
+    order: 10;
+    flex: 1 0 100%;
+    white-space: normal;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
   }
 }
 

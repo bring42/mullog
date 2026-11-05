@@ -1,6 +1,7 @@
 export type EncodingName = 'utf-8' | 'windows-1252' | 'iso-8859-1';
 export type ParserMode = 'auto' | 'csv' | 'txt';
 export type DetectedType = 'csv' | 'txt' | 'unknown';
+export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 export type WarningLevel = 'error' | 'warning' | 'info';
 
 export interface ParseWarning {
@@ -25,7 +26,7 @@ export interface ColumnMeta {
   emptyCount: number;
   sampleValues: string[];
   isCategorical: boolean;
-  role?: 'timestamp' | 'category' | 'message' | 'raw' | 'lineNumber';
+  role?: 'timestamp' | 'severity' | 'category' | 'message' | 'raw' | 'lineNumber';
 }
 
 export interface DetectionAssumption {
@@ -63,6 +64,8 @@ export interface LogRow {
   timestamp?: string;
   timestampRaw?: string;
   timestampMs?: number;
+  /** Normalised level: TRACE, DEBUG, INFO, WARN, ERROR or FATAL. */
+  severity?: Severity;
   category: string;
   source?: string;
   notes: string[];
@@ -84,5 +87,5 @@ export interface FilterState {
 
 export interface FilterFacets {
   categories: Array<{ value: string; count: number }>;
-  columns: Array<{ column: string; values: Array<{ value: string; count: number }> }>;
+  columns: Array<{ column: string; values: Array<{ value: string; count: number; total: number }> }>;
 }

@@ -7,7 +7,8 @@ import type {
   LogRow,
   ParseResult,
   ParseWarning,
-  ParserMode
+  ParserMode,
+  Severity
 } from './types';
 import { stripUtf8Bom } from './encoding';
 
@@ -102,10 +103,15 @@ function parseCsv(text: string, options: ParseOptions, inheritedWarnings: ParseW
   const dataRecords = headerInfo.hasHeader ? parsed.records.slice(1) : parsed.records;
   const schema = inferSchema(headers, dataRecords);
   const timestampColumn = pickRoleColumn(schema, ['timestamp', 'time', 'date', 'datetime', 'tid', 'createdat', 'loggedat']);
-  const categoryColumn = pickBestCategoryColumn(schema, ['category', 'module', 'source', 'logger', 'component', 'service', 'rapportgrupper', 'typavlarm']);
+  const severityColumn = pickSeverityColumn(schema, dataRecords);
+  const categoryColumn = pickBestCategoryColumn(
+    schema.filter((column) => column !== severityColumn),
+    ['category', 'module', 'source', 'logger', 'component', 'service', 'rapportgrupper', 'typavlarm']
+  );
 
   schema.forEach((column) => {
     if (timestampColumn && column.name === timestampColumn.name) column.role = 'timestamp';
+    if (severityColumn && column.name === severityColumn.name) column.role = 'severity';
     if (categoryColumn && column.name === categoryColumn.name) column.role = 'category';
     if (/message|msg|description|detail|händelse|kommentar/i.test(column.name)) column.role = 'message';
   });
@@ -138,6 +144,7 @@ function parseCsv(text: string, options: ParseOptions, inheritedWarnings: ParseW
       timestamp: timestamp?.iso,
       timestampRaw: timestamp?.raw,
       timestampMs: timestamp?.ms,
+      severity: severityColumn ? normaliseSeverity(fields[severityColumn.name]) : undefined,
       category,
       source: category,
       notes: [
@@ -217,6 +224,7 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
     }
 
     const timestamp = findTimestamp(line);
+    const severity = detectSeverity(line);
     const category = detectCategory(line, repeatedTokens) ?? 'uncategorized';
     const continuation = index > 0 && line.trim() !== '' && !timestamp && /^\s+/.test(line);
 
@@ -232,13 +240,15 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
     }
 
     if (timestamp?.format) notes.push(`Timestamp matched ${timestamp.format}.`);
+    if (severity) notes.push(`Severity inferred as ${severity.value} from "${severity.raw.trim()}".`);
     if (category !== 'uncategorized') notes.push(`Category inferred as ${category}.`);
 
     const fields: Record<string, string> = {
       line_number: String(lineNumber),
       timestamp: timestamp?.raw ?? '',
-      category,
-      message: stripDetectedPrefix(line, timestamp?.raw, category),
+      severity: severity?.value ?? '',
+      category: category === 'uncategorized' ? '' : category,
+      message: stripDetectedPrefix(line, timestamp?.raw, category, severity?.raw),
       raw: line
     };
 
@@ -250,6 +260,7 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
       timestamp: timestamp?.iso,
       timestampRaw: timestamp?.raw,
       timestampMs: timestamp?.ms,
+      severity: severity?.value,
       category,
       source: category,
       notes
@@ -257,13 +268,18 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
   });
 
   const timestampSummary = summariseTimestamps(rows);
+  // Only expose severity/category columns when the file actually has them.
+  const txtColumns = ['line_number', 'timestamp', 'severity', 'category', 'message', 'raw'].filter(
+    (key) => (key !== 'severity' && key !== 'category') || rows.some((row) => row.fields[key])
+  );
   const schema = inferSchema(
-    ['line_number', 'timestamp', 'category', 'message', 'raw'],
-    rows.map((row) => ({ fields: ['line_number', 'timestamp', 'category', 'message', 'raw'].map((key) => row.fields[key] ?? '') })) as CsvRecord[]
+    txtColumns,
+    rows.map((row) => ({ fields: txtColumns.map((key) => row.fields[key] ?? '') })) as CsvRecord[]
   );
   schema.forEach((column) => {
     if (column.name === 'line_number') column.role = 'lineNumber';
     if (column.name === 'timestamp') column.role = 'timestamp';
+    if (column.name === 'severity') column.role = 'severity';
     if (column.name === 'category') column.role = 'category';
     if (column.name === 'raw') column.role = 'raw';
     if (column.name === 'message') column.role = 'message';
@@ -516,6 +532,18 @@ function pickRoleColumn(schema: ColumnMeta[], names: string[]): ColumnMeta | und
   return schema.find((column) => names.some((name) => column.name.toLowerCase().replace(/[\s_-]/g, '').includes(name.replace(/[\s_-]/g, ''))));
 }
 
+/** A column whose name says "level" or "severity", or whose values are mostly log levels. */
+function pickSeverityColumn(schema: ColumnMeta[], records: CsvRecord[]): ColumnMeta | undefined {
+  const byName = schema.find((column) => /^(level|loglevel|log_level|severity|lvl|priority|prio)$/i.test(column.name));
+  if (byName) return byName;
+  return schema.find((column) => {
+    if (!column.isCategorical) return false;
+    const values = records.map((record) => record.fields[column.index] ?? '').filter((value) => value.trim() !== '');
+    if (values.length === 0) return false;
+    return values.filter((value) => normaliseSeverity(value)).length / values.length >= 0.9;
+  });
+}
+
 function pickBestCategoryColumn(schema: ColumnMeta[], names: string[]): ColumnMeta | undefined {
   return pickRoleColumn(schema, names) ?? schema.find((column) => column.isCategorical && column.uniqueCount <= 30);
 }
@@ -557,17 +585,60 @@ function summariseTimestamps(rows: LogRow[]): { format?: string; confidence: num
   return { format, confidence: round(count / Math.max(rows.length, 1)) };
 }
 
+const SEVERITY_ALIASES: Record<string, Severity> = {
+  TRACE: 'TRACE',
+  VERBOSE: 'TRACE',
+  DEBUG: 'DEBUG',
+  DBG: 'DEBUG',
+  INFO: 'INFO',
+  NOTICE: 'INFO',
+  WARN: 'WARN',
+  WARNING: 'WARN',
+  ERROR: 'ERROR',
+  ERR: 'ERROR',
+  FATAL: 'FATAL',
+  CRITICAL: 'FATAL',
+  CRIT: 'FATAL',
+  SEVERE: 'FATAL',
+  EMERG: 'FATAL',
+  ALERT: 'FATAL',
+  PANIC: 'FATAL'
+};
+const SEVERITY_WORDS = Object.keys(SEVERITY_ALIASES).join('|');
+// [warn] / (Error) in any case; bare uppercase words like ERROR or WARN:; logfmt level=error.
+const SEVERITY_BRACKETED = new RegExp(`[\\[(]\\s*(${SEVERITY_WORDS})\\s*[\\])]`, 'i');
+const SEVERITY_BARE = new RegExp(`\\b(${SEVERITY_WORDS})\\b:?`);
+const SEVERITY_LOGFMT = new RegExp(`\\b(?:level|lvl|severity)=["']?(${SEVERITY_WORDS})\\b["']?`, 'i');
+
+export function normaliseSeverity(value: string | undefined): Severity | undefined {
+  if (!value) return undefined;
+  return SEVERITY_ALIASES[value.trim().toUpperCase()];
+}
+
+function detectSeverity(line: string): { value: Severity; raw: string } | undefined {
+  for (const pattern of [SEVERITY_BRACKETED, SEVERITY_LOGFMT, SEVERITY_BARE]) {
+    const match = pattern.exec(line);
+    const value = normaliseSeverity(match?.[1]);
+    if (match && value) return { value, raw: match[0] };
+  }
+  return undefined;
+}
+
+function isSeverityToken(token: string): boolean {
+  return normaliseSeverity(token) !== undefined;
+}
+
 function detectCategory(line: string, repeatedTokens = new Set<string>()): string | undefined {
   const bracketMatches = [...line.matchAll(/[\[(]([\p{L}][\p{L}\p{N}.-]{1,48})[\])]/gu)]
     .map((match) => match[1])
-    .filter((token) => !/^\d+$/.test(token));
+    .filter((token) => !/^\d+$/.test(token) && !isSeverityToken(token));
   if (bracketMatches[0]) return bracketMatches[0];
 
   const prefix = /^\s*(?:\S+\s+){0,4}?([\p{L}][\p{L}\p{N}.-]{1,48})\s*:\s+/u.exec(line)?.[1];
-  if (prefix) return prefix;
+  if (prefix && !isSeverityToken(prefix)) return prefix;
 
   const token = firstMeaningfulToken(line);
-  if (token && repeatedTokens.has(token)) return token;
+  if (token && repeatedTokens.has(token) && !isSeverityToken(token)) return token;
 
   return undefined;
 }
@@ -578,9 +649,10 @@ function firstMeaningfulToken(line: string): string | undefined {
   return match?.[1];
 }
 
-function stripDetectedPrefix(line: string, timestampRaw?: string, category?: string): string {
+function stripDetectedPrefix(line: string, timestampRaw?: string, category?: string, severityRaw?: string): string {
   let output = line;
   if (timestampRaw) output = output.replace(timestampRaw, '');
+  if (severityRaw) output = output.replace(severityRaw, '');
   if (category && category !== 'uncategorized') {
     output = output.replace(`[${category}]`, '').replace(`${category}:`, '');
   }

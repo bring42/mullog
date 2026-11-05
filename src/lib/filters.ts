@@ -1,4 +1,5 @@
-import type { FilterFacets, FilterState, LogRow } from './types';
+import { normaliseSeverity } from './parser';
+import type { ColumnMeta, FilterFacets, FilterState, LogRow } from './types';
 
 export const emptyFilters: FilterState = {
   search: '',
@@ -33,17 +34,84 @@ export function applyFilters(rows: LogRow[], filters: FilterState): LogRow[] {
   });
 }
 
-export function buildFacets(rows: LogRow[]): FilterFacets {
+const SEVERITY_ORDER = ['FATAL', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
+const MAX_FACET_VALUES = 30;
+
+/** Columns worth offering as checklists: severity, category, and other low-cardinality columns. */
+export function facetColumnsFor(schema: ColumnMeta[]): string[] {
+  const rank = (column: ColumnMeta) => (column.role === 'severity' ? 0 : column.role === 'category' ? 1 : 2);
+  return schema
+    .filter((column) => {
+      if (column.role === 'raw' || column.role === 'lineNumber' || column.role === 'message' || column.role === 'timestamp') return false;
+      const limit = column.role === 'severity' || column.role === 'category' ? 50 : MAX_FACET_VALUES;
+      if (column.uniqueCount < 2 || column.uniqueCount > limit) return false;
+      return column.role === 'severity' || column.role === 'category' || column.isCategorical;
+    })
+    .sort((a, b) => rank(a) - rank(b) || a.index - b.index)
+    .map((column) => column.name);
+}
+
+/**
+ * Facet options come from every row so they never disappear, but each count reflects
+ * the other active filters (search, time, other facets) - excluding the facet's own selection.
+ */
+export function buildFacets(rows: LogRow[], filters: FilterState, facetColumns: string[], severityColumn?: string): FilterFacets {
   const categories = countValues(rows.map((row) => row.category));
-  const columnNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))];
-  const columns = columnNames
-    .map((column) => ({
-      column,
-      values: countValues(rows.map((row) => row.fields[column] ?? '').filter((value) => value !== '')).slice(0, 50)
-    }))
-    .filter((column) => column.values.length > 1 && column.values.length <= 50);
+  const columns = facetColumns.map((column) => {
+    const totals = countValues(rows.map((row) => row.fields[column] ?? '').filter((value) => value !== ''));
+    const withoutSelf: FilterState = { ...filters, columnFilters: { ...filters.columnFilters, [column]: [] } };
+    const live = new Map(
+      countValues(applyFilters(rows, withoutSelf).map((row) => row.fields[column] ?? '').filter((value) => value !== '')).map((item) => [
+        item.value,
+        item.count
+      ])
+    );
+    const values = totals.map((item) => ({ value: item.value, total: item.count, count: live.get(item.value) ?? 0 }));
+    if (column === severityColumn) values.sort((a, b) => severityRank(a.value) - severityRank(b.value));
+    return { column, values };
+  });
 
   return { categories, columns };
+}
+
+function severityRank(value: string): number {
+  const index = SEVERITY_ORDER.indexOf(normaliseSeverity(value) ?? '');
+  return index === -1 ? SEVERITY_ORDER.length : index;
+}
+
+export interface TextSegment {
+  text: string;
+  match: boolean;
+}
+
+/**
+ * Split a cell value into plain/matched segments for highlighting. When the first match sits
+ * far into the text, lead with an ellipsis so the match is visible in a truncated cell.
+ */
+export function highlightSegments(value: string, query: string, lead = 48, context = 24): TextSegment[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle || !value) return [{ text: value, match: false }];
+  const lower = value.toLowerCase();
+  const first = lower.indexOf(needle);
+  if (first === -1) return [{ text: value, match: false }];
+
+  let offset = 0;
+  const segments: TextSegment[] = [];
+  if (first > lead) {
+    offset = first - Math.min(context, lead);
+    segments.push({ text: '…', match: false });
+  }
+
+  let cursor = offset;
+  let index = first;
+  while (index !== -1) {
+    if (index > cursor) segments.push({ text: value.slice(cursor, index), match: false });
+    segments.push({ text: value.slice(index, index + needle.length), match: true });
+    cursor = index + needle.length;
+    index = lower.indexOf(needle, cursor);
+  }
+  if (cursor < value.length) segments.push({ text: value.slice(cursor), match: false });
+  return segments;
 }
 
 export function describeActiveFilters(filters: FilterState): string[] {
@@ -84,9 +152,9 @@ export function clearFilterToken(filters: FilterState, token: string): FilterSta
 }
 
 export function rowsToCsv(rows: LogRow[]): string {
-  const reserved = new Set(['line_number', 'timestamp', 'category', 'raw']);
+  const reserved = new Set(['line_number', 'timestamp', 'severity', 'category', 'raw']);
   const fieldNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))].filter((name) => !reserved.has(name));
-  const headers = ['line_number', 'timestamp_iso', 'timestamp_raw', 'category', ...fieldNames, 'raw_line'];
+  const headers = ['line_number', 'timestamp_iso', 'timestamp_raw', 'severity', 'category', ...fieldNames, 'raw_line'];
   const csvRows = [headers, ...rows.map((row) => headers.map((header) => valueForHeader(row, header)))];
   return csvRows.map((row) => row.map(escapeCsv).join(',')).join('\n');
 }
@@ -119,6 +187,7 @@ function valueForHeader(row: LogRow, header: string): string {
   if (header === 'line_number') return String(row.lineNumber);
   if (header === 'timestamp_iso') return row.timestamp ?? '';
   if (header === 'timestamp_raw') return row.timestampRaw ?? '';
+  if (header === 'severity') return row.severity ?? row.fields.severity ?? '';
   if (header === 'category') return row.category;
   if (header === 'raw_line') return row.rawLine;
   return row.fields[header] ?? '';

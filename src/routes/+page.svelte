@@ -7,9 +7,9 @@
   import RowInspector from '$lib/components/RowInspector.svelte';
   import ExportButton from '$lib/components/ExportButton.svelte';
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
-  import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters } from '$lib/filters';
+  import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, facetColumnsFor } from '$lib/filters';
   import { parseLogText } from '$lib/parser';
-  import type { DetectionState, EncodingName, FilterState, LogRow, ParseWarning } from '$lib/types';
+  import type { ColumnMeta, DetectionState, EncodingName, FilterState, LogRow, ParseWarning } from '$lib/types';
 
   let currentBuffer: ArrayBuffer | null = null;
   let currentText = '';
@@ -32,7 +32,10 @@
 
   $: hasFile = currentText.length > 0;
   $: filteredRows = applyFilters(rows, filters);
-  $: facets = buildFacets(rows);
+  $: schema = detection?.schema ?? [];
+  $: severityColumn = schema.find((column) => column.role === 'severity')?.name;
+  $: messageColumn = schema.find((column) => column.role === 'message')?.name;
+  $: facets = buildFacets(rows, filters, facetColumnsFor(schema), severityColumn);
   $: activeTokens = describeActiveFilters(filters);
   $: tableColumns = detection?.schema.map((column) => column.name) ?? [];
   $: timestampColumn = detection?.schema.find((column) => column.role === 'timestamp')?.name;
@@ -75,7 +78,7 @@
       });
       detection = result.detection;
       rows = result.rows;
-      syncVisibleColumns(result.detection.schema.map((column) => column.name));
+      syncVisibleColumns(result.detection.schema);
       if (selectedRow && !rows.some((row) => row.id === selectedRow?.id)) selectedRow = null;
     } catch (error) {
       parseError = error instanceof Error ? error.message : 'Unknown parser error.';
@@ -93,7 +96,8 @@
     }
   }
 
-  function syncVisibleColumns(nextColumns: string[]) {
+  function syncVisibleColumns(nextSchema: ColumnMeta[]) {
+    const nextColumns = nextSchema.map((column) => column.name);
     const nextSchemaKey = JSON.stringify(nextColumns);
     const schemaChanged = nextSchemaKey !== schemaKey;
     schemaKey = nextSchemaKey;
@@ -108,7 +112,9 @@
       return;
     }
 
-    visibleColumns = nextColumns;
+    // Line numbers already live in the # column and raw duplicates the parsed fields:
+    // hide both by default so the message gets the room. They stay toggleable.
+    visibleColumns = nextSchema.filter((column) => column.role !== 'raw' && column.role !== 'lineNumber').map((column) => column.name);
   }
 
   function clearFile() {
@@ -206,6 +212,7 @@
         {facets}
         {tableColumns}
         {visibleColumns}
+        {severityColumn}
         open={filtersOpen}
         on:change={(event) => (filters = event.detail)}
         on:columnsChange={(event) => (visibleColumns = event.detail)}
@@ -229,6 +236,9 @@
           columns={tableColumns}
           {visibleColumns}
           {timestampColumn}
+          {severityColumn}
+          {messageColumn}
+          search={filters.search}
           selectedId={selectedRow?.id ?? ''}
           on:select={(event) => (selectedRow = event.detail)}
         />
