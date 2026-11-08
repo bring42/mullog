@@ -57,12 +57,18 @@ export interface DetectionState {
 
 export interface LogRow {
   id: string;
+  /** First physical line of the entry (1-based). */
   lineNumber: number;
+  /** Last physical line when continuation lines were merged into this row. */
+  lineEnd?: number;
+  /** Every physical line of the entry, joined with \n. */
   rawLine: string;
   fields: Record<string, string>;
   timestamp?: string;
   timestampRaw?: string;
   timestampMs?: number;
+  /** Full multi-line message (first-line message plus continuation lines); `fields.message` keeps the first line. */
+  fullMessage?: string;
   category: string;
   source?: string;
   notes: string[];

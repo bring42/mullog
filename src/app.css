@@ -673,6 +673,29 @@ body.resizing-inspector {
   word-break: break-word;
 }
 
+/* Stack traces: keep each frame on one line and scroll sideways rather than wrapping mid-frame. */
+.row-sheet .raw.multi {
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  tab-size: 4;
+  line-height: 1.5;
+}
+
+table.log .more-lines {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 18px;
+  vertical-align: 1px;
+}
+
+
 .field-grid {
   display: grid;
   grid-template-columns: minmax(110px, max-content) 1fr;
@@ -691,6 +714,19 @@ body.resizing-inspector {
   font-size: 12px;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+/* Multi-line values (merged stack traces) get the full sheet width and scroll sideways. */
+.field-grid .v.block {
+  grid-column: 1 / -1;
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-sm);
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  line-height: 1.5;
 }
 
 .field-grid .v.empty {

@@ -24,6 +24,14 @@
   let wasOpenAsDialog = false;
 
   $: open = row !== null;
+  $: rawLineCount = row ? row.rawLine.split('\n').length : 0;
+  $: multiLine = rawLineCount > 1;
+
+  function lineLabel(current: LogRow): string {
+    return current.lineEnd && current.lineEnd > current.lineNumber
+      ? `Lines ${current.lineNumber}–${current.lineEnd}`
+      : `Line ${current.lineNumber}`;
+  }
   $: hidden = open && position < 0;
   $: asDialog = open && mobile;
   $: if (asDialog !== wasOpenAsDialog) {
@@ -158,7 +166,7 @@
   {#if row}
     <header>
       <div class="title-block">
-        <h2 id="row-inspector-title">Line {row.lineNumber}</h2>
+        <h2 id="row-inspector-title">{lineLabel(row)}</h2>
         {#if row.timestampRaw}
           <div class="sub">{row.timestampRaw}</div>
         {/if}
@@ -209,20 +217,23 @@
       <section>
         <h3>Fields</h3>
         <div class="field-grid">
-          {#each Object.entries(row.fields) as [key, value]}
+          {#each Object.entries(row.fields) as [key, fieldValue]}
+            {@const value = key === 'message' && row.fullMessage ? row.fullMessage : fieldValue}
             <div class="k">{key}</div>
-            {#if value === ''}
+            {#if key === 'raw' && multiLine}
+              <div class="v empty">{rawLineCount} lines, shown below</div>
+            {:else if value === ''}
               <div class="v empty">empty</div>
             {:else}
-              <div class="v">{value}</div>
+              <div class="v" class:block={value.includes('\n')}>{value}</div>
             {/if}
           {/each}
         </div>
       </section>
 
       <section>
-        <h3>Raw line</h3>
-        <pre class="raw">{row.rawLine}</pre>
+        <h3>{multiLine ? `Raw lines (${rawLineCount})` : 'Raw line'}</h3>
+        <pre class="raw" class:multi={multiLine}>{row.rawLine}</pre>
       </section>
 
       {#if row.notes.length > 0}

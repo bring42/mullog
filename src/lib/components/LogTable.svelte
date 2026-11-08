@@ -11,6 +11,12 @@
   const dispatch = createEventDispatcher<{ select: LogRow }>();
 
   $: orderedColumns = orderColumns(columns, visibleColumns, timestampColumn);
+  // Merged rows get a "+N lines" hint in the message column, or the last column if message is hidden.
+  $: hintColumn = orderedColumns.includes('message') ? 'message' : orderedColumns[orderedColumns.length - 1];
+
+  function extraLines(row: LogRow): number {
+    return row.lineEnd ? row.lineEnd - row.lineNumber : 0;
+  }
 
   function orderColumns(all: string[], visible: string[], timeCol: string | undefined): string[] {
     const filtered = all.filter((column) => visible.includes(column));
@@ -59,6 +65,9 @@
             <td class="line-num">{row.lineNumber}</td>
             {#each orderedColumns as column}
               <td class:timestamp={column === timestampColumn} title={cellValue(row, column)}>
+                {#if column === hintColumn && extraLines(row) > 0}
+                  <span class="more-lines" title="Lines {row.lineNumber}–{row.lineEnd}">+{extraLines(row)} line{extraLines(row) === 1 ? '' : 's'}</span>
+                {/if}
                 {cellValue(row, column)}
               </td>
             {/each}
