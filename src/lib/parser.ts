@@ -196,10 +196,11 @@ function parseCsv(text: string, options: ParseOptions, inheritedWarnings: ParseW
 function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseWarning[], detectedType: DetectedType): ParseResult {
   const warnings = [...inheritedWarnings];
   const lines = splitLines(text);
+  const entries = groupContinuationLines(lines);
   const tokenCounts = new Map<string, number>();
 
-  lines.forEach((line) => {
-    const token = firstMeaningfulToken(line);
+  entries.forEach((entry) => {
+    const token = firstMeaningfulToken(entry.lines[0]);
     if (token) tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
   });
 
@@ -209,8 +210,11 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
       .map(([token]) => token)
   );
 
-  const rows: LogRow[] = lines.map((line, index) => {
-    const lineNumber = index + 1;
+  const rows: LogRow[] = entries.map((entry) => {
+    const lineNumber = entry.start + 1;
+    const lineEnd = entry.start + entry.lines.length;
+    const [line, ...continuation] = entry.lines;
+    const rawLine = entry.lines.join('\n');
     const notes: string[] = [];
     if (line.trim() === '') {
       warnings.push({
@@ -226,36 +230,41 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
     const timestamp = findTimestamp(line);
     const severity = detectSeverity(line);
     const category = detectCategory(line, repeatedTokens) ?? 'uncategorized';
-    const continuation = index > 0 && line.trim() !== '' && !timestamp && /^\s+/.test(line);
 
-    if (continuation) {
+    if (continuation.length > 0) {
+      const count = continuation.length;
       warnings.push({
         id: `continuation-${lineNumber}`,
         type: 'continuation-line',
         level: 'info',
         lineNumber,
-        message: 'Indented line without timestamp treated as a continuation line.'
+        message: `Merged ${count} continuation line${count === 1 ? '' : 's'} into line ${lineNumber}.`
       });
-      notes.push('Continuation line: no timestamp found and line starts with whitespace.');
+      notes.push(
+        `Merged ${count} continuation line${count === 1 ? '' : 's'} (line${count === 1 ? ` ${lineNumber + 1}` : `s ${lineNumber + 1}–${lineEnd}`}): indented or stack-trace lines without a timestamp.`
+      );
     }
 
     if (timestamp?.format) notes.push(`Timestamp matched ${timestamp.format}.`);
     if (severity) notes.push(`Severity inferred as ${severity.value} from "${severity.raw.trim()}".`);
     if (category !== 'uncategorized') notes.push(`Category inferred as ${category}.`);
 
+    const message = stripDetectedPrefix(line, timestamp?.raw, category, severity?.raw);
     const fields: Record<string, string> = {
       line_number: String(lineNumber),
       timestamp: timestamp?.raw ?? '',
       severity: severity?.value ?? '',
       category: category === 'uncategorized' ? '' : category,
-      message: stripDetectedPrefix(line, timestamp?.raw, category, severity?.raw),
-      raw: line
+      // The table shows the first line; the full text lives in fullMessage and raw.
+      message,
+      raw: rawLine
     };
 
     return {
       id: `txt-${lineNumber}`,
       lineNumber,
-      rawLine: line,
+      ...(continuation.length > 0 ? { lineEnd, fullMessage: [message, ...continuation].join('\n') } : {}),
+      rawLine,
       fields,
       timestamp: timestamp?.iso,
       timestampRaw: timestamp?.raw,
@@ -312,6 +321,83 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
   };
 
   return { detection, rows };
+}
+
+interface LineGroup {
+  /** Zero-based index of the first line. */
+  start: number;
+  lines: string[];
+}
+
+// Stack-trace shapes that continue the previous entry even without extra indentation.
+const JAVA_FRAME = /^\s*at\s+\S/;
+const JAVA_CAUSED_BY = /^\s*Caused by:/;
+const JAVA_SUPPRESSED = /^\s*Suppressed:/;
+const JAVA_MORE = /^\s*\.\.\.\s*\d+\s+(?:more|common frames omitted)/;
+const JAVA_EXCEPTION_HEAD = /^(?:Exception in thread "[^"]*"\s+)?(?:[a-z_$][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error|Throwable)\b(?::.*)?$/;
+const PY_TRACEBACK = /^\s*Traceback \(most recent call last\):/;
+const PY_FRAME = /^\s*File ".*", line \d+/;
+const PY_CHAINED = /^\s*(?:During handling of the above exception, another exception occurred:|The above exception was the direct cause of the following exception:)\s*$/;
+// Final line of a Python traceback, e.g. "ValueError: bad input" or "KeyboardInterrupt".
+const PY_EXCEPTION_LINE = /^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt|Warning|Iteration)(?::.*)?$/;
+
+function leadingWhitespace(line: string): number {
+  return /^\s*/.exec(line)?.[0].length ?? 0;
+}
+
+function isStackTraceLine(line: string): boolean {
+  return [JAVA_FRAME, JAVA_CAUSED_BY, JAVA_SUPPRESSED, JAVA_MORE, JAVA_EXCEPTION_HEAD, PY_TRACEBACK, PY_FRAME, PY_CHAINED].some((pattern) =>
+    pattern.test(line)
+  );
+}
+
+/**
+ * Group physical lines into log entries. A line without a timestamp continues the entry above when
+ * it is indented deeper than that entry's first line, or looks like part of a Java/Python stack
+ * trace. Blank lines stay their own rows unless the entry carries on after them, in which case they
+ * are kept inside the merged text.
+ */
+function groupContinuationLines(lines: string[]): LineGroup[] {
+  const groups: LineGroup[] = [];
+  let current: LineGroup | undefined;
+  let inPythonTraceback = false;
+
+  const continues = (line: string, head: string): boolean => {
+    if (line.trim() === '' || findTimestamp(line)) return false;
+    if (isStackTraceLine(line)) return true;
+    if (inPythonTraceback && PY_EXCEPTION_LINE.test(line)) return true;
+    return leadingWhitespace(line) > leadingWhitespace(head);
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    // Only a non-blank entry can absorb continuation lines.
+    const head = current && current.lines[0].trim() !== '' ? current.lines[0] : undefined;
+
+    if (current && head !== undefined && line.trim() === '') {
+      // Fold blank lines only when the entry resumes right after them.
+      let next = index + 1;
+      while (next < lines.length && lines[next].trim() === '') next += 1;
+      if (next < lines.length && continues(lines[next], head)) {
+        current.lines.push(...lines.slice(index, next));
+        index = next - 1;
+        continue;
+      }
+    }
+
+    if (current && head !== undefined && continues(line, head)) {
+      current.lines.push(line);
+      if (PY_TRACEBACK.test(line)) inPythonTraceback = true;
+      else if (inPythonTraceback && leadingWhitespace(line) === 0 && PY_EXCEPTION_LINE.test(line)) inPythonTraceback = false;
+      continue;
+    }
+
+    current = { start: index, lines: [line] };
+    inPythonTraceback = PY_TRACEBACK.test(line);
+    groups.push(current);
+  }
+
+  return groups;
 }
 
 function detectDelimiter(text: string): { delimiter: string; confidence: number } {

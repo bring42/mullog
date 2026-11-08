@@ -17,6 +17,12 @@
   $: orderedColumns = orderColumns(columns, visibleColumns);
   // The message column (when shown) absorbs all remaining width instead of being capped.
   $: flexColumn = messageColumn && orderedColumns.includes(messageColumn) ? messageColumn : undefined;
+  // Merged rows get a "+N lines" hint in the message column, or the last column if message is hidden.
+  $: hintColumn = flexColumn ?? orderedColumns[orderedColumns.length - 1];
+
+  function extraLines(row: LogRow): number {
+    return row.lineEnd ? row.lineEnd - row.lineNumber : 0;
+  }
 
   /** Timestamp, then severity, then everything else, with the message last so it can fill the row. */
   function orderColumns(all: string[], visible: string[]): string[] {
@@ -59,14 +65,24 @@
             class={row.severity ? `sev-${row.severity.toLowerCase()}` : ''}
             class:selected={selectedId === row.id}
             class:malformed={row.malformed}
+            data-row-id={row.id}
+            aria-selected={selectedId === row.id}
             tabindex="0"
             on:click={() => dispatch('select', row)}
-            on:keydown={(event) => event.key === 'Enter' && dispatch('select', row)}
+            on:keydown={(event) => {
+              if (event.key !== 'Enter') return;
+              // Stop the same keypress from activating a control that gains focus as the row opens.
+              event.preventDefault();
+              dispatch('select', row);
+            }}
           >
             <td class="line-num">{row.lineNumber}</td>
             {#each orderedColumns as column}
               {@const value = cellValue(row, column)}
               <td class={columnClass(column)} title={value}>
+                {#if column === hintColumn && extraLines(row) > 0}
+                  <span class="more-lines" title="Lines {row.lineNumber}–{row.lineEnd}">+{extraLines(row)} line{extraLines(row) === 1 ? '' : 's'}</span>
+                {/if}
                 {#if column === severityColumn && value}
                   <span class="sev-tag sev-{(row.severity ?? 'other').toLowerCase()}">{value}</span>
                 {:else}

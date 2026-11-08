@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import FileDropzone from '$lib/components/FileDropzone.svelte';
   import DetectionPanel from '$lib/components/DetectionPanel.svelte';
   import FilterRail from '$lib/components/FilterRail.svelte';
@@ -42,6 +42,10 @@
   $: tableColumns = detection?.schema.map((column) => column.name) ?? [];
   $: timestampColumn = detection?.schema.find((column) => column.role === 'timestamp')?.name;
   $: exportName = `${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered.csv`;
+  $: rowOrder = new Map(rows.map((row, index) => [row.id, index]));
+  $: selectedPosition = selectedRow ? filteredRows.findIndex((row) => row.id === selectedRow?.id) : -1;
+  $: canPrev = neighbourIndex(-1, selectedRow, selectedPosition, filteredRows, rowOrder) !== -1;
+  $: canNext = neighbourIndex(1, selectedRow, selectedPosition, filteredRows, rowOrder) !== -1;
 
   onMount(() => {
     window.addEventListener('keydown', handleKeyboard);
@@ -223,17 +227,76 @@
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
+  /**
+   * Index in `filteredRows` of the row before (-1) or after (1) the selection.
+   * A selection hidden by filters steps to the nearest shown row in file order.
+   */
+  function neighbourIndex(
+    direction: -1 | 1,
+    selected: LogRow | null,
+    position: number,
+    shown: LogRow[],
+    order: Map<string, number>
+  ): number {
+    if (!selected) return -1;
+    if (position >= 0) {
+      const next = position + direction;
+      return next >= 0 && next < shown.length ? next : -1;
+    }
+    const selectedOrder = order.get(selected.id) ?? -1;
+    if (direction === 1) return shown.findIndex((row) => (order.get(row.id) ?? -1) > selectedOrder);
+    return shown.findLastIndex((row) => (order.get(row.id) ?? -1) < selectedOrder);
+  }
+
+  function rowElement(id: string): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`tr[data-row-id="${CSS.escape(id)}"]`);
+  }
+
+  async function step(direction: -1 | 1) {
+    const index = neighbourIndex(direction, selectedRow, selectedPosition, filteredRows, rowOrder);
+    if (index === -1) return;
+    const focusWasOnRow = document.activeElement?.matches('tr[data-row-id]') ?? false;
+    selectedRow = filteredRows[index];
+    await tick();
+    const element = rowElement(selectedRow.id);
+    if (!element) return;
+    if (focusWasOnRow) element.focus({ preventScroll: true });
+    element.scrollIntoView({ block: 'nearest' });
+  }
+
+  async function closeInspector(returnFocus = true) {
+    const id = selectedRow?.id;
+    selectedRow = null;
+    if (!id || !returnFocus) return;
+    await tick();
+    rowElement(id)?.focus();
+  }
+
   function handleKeyboard(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
-    const typing = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+    const typing =
+      target?.tagName === 'INPUT' ||
+      target?.tagName === 'TEXTAREA' ||
+      target?.tagName === 'SELECT' ||
+      target?.isContentEditable;
+    const modified = event.metaKey || event.ctrlKey || event.altKey;
 
     if (event.key === '/' && !typing && hasFile) {
       event.preventDefault();
       document.getElementById('search-input')?.focus();
     }
 
+    if (selectedRow && !typing && !modified && !event.defaultPrevented) {
+      const direction = event.key === 'ArrowDown' || event.key === 'j' ? 1 : event.key === 'ArrowUp' || event.key === 'k' ? -1 : 0;
+      if (direction !== 0) {
+        event.preventDefault();
+        step(direction);
+        return;
+      }
+    }
+
     if (event.key === 'Escape') {
-      if (selectedRow) selectedRow = null;
+      if (selectedRow) closeInspector(!typing);
       else if (filtersOpen) filtersOpen = false;
     }
   }
@@ -295,7 +358,7 @@
       <div class="parse-error" role="alert">{loadError}</div>
     {/if}
 
-    <div class="main">
+    <div class="main" class:inspecting={selectedRow !== null}>
       {#if filtersOpen}
         <button class="scrim open mobile-only" aria-label="Close filters" on:click={() => (filtersOpen = false)}></button>
       {/if}
@@ -312,7 +375,7 @@
         on:close={() => (filtersOpen = false)}
       />
 
-      <section class="table-region">
+      <section class="table-region" aria-label="Log rows">
         {#if activeTokens.length > 0}
           <div class="active-filters">
             {#each activeTokens as token}
@@ -336,9 +399,18 @@
           on:select={(event) => (selectedRow = event.detail)}
         />
       </section>
-    </div>
 
-    <RowInspector row={selectedRow} on:close={() => (selectedRow = null)} />
+      <RowInspector
+        row={selectedRow}
+        position={selectedPosition}
+        total={filteredRows.length}
+        {canPrev}
+        {canNext}
+        on:prev={() => step(-1)}
+        on:next={() => step(1)}
+        on:close={() => closeInspector()}
+      />
+    </div>
   </div>
 {/if}
 
