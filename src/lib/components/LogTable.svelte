@@ -45,9 +45,16 @@
           <tr
             class:selected={selectedId === row.id}
             class:malformed={row.malformed}
+            data-row-id={row.id}
+            aria-selected={selectedId === row.id}
             tabindex="0"
             on:click={() => dispatch('select', row)}
-            on:keydown={(event) => event.key === 'Enter' && dispatch('select', row)}
+            on:keydown={(event) => {
+              if (event.key !== 'Enter') return;
+              // Stop the same keypress from activating a control that gains focus as the row opens.
+              event.preventDefault();
+              dispatch('select', row);
+            }}
           >
             <td class="line-num">{row.lineNumber}</td>
             {#each orderedColumns as column}

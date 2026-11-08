@@ -246,6 +246,10 @@ a {
   flex-direction: column;
 }
 
+table.log tbody tr {
+  scroll-margin-top: 40px;
+}
+
 .parse-error {
   margin: 12px;
   padding: 12px 14px;
@@ -536,31 +540,95 @@ table.log tbody tr.malformed td {
 }
 
 .row-sheet {
-  position: fixed;
-  z-index: 60;
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-3);
   display: flex;
   flex-direction: column;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(480px, 100%);
-  transform: translateX(100%);
-  transition: transform 0.22s ease;
+  min-height: 0;
 }
 
-.row-sheet.open {
-  transform: translateX(0);
+.row-sheet:focus {
+  outline: none;
 }
 
 .row-sheet header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 12px 12px 12px 16px;
   border-bottom: 1px solid var(--border);
   gap: 12px;
+}
+
+.row-sheet .title-block {
+  min-width: 0;
+}
+
+.row-sheet .sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.row-sheet .position {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+.btn.icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.row-sheet .hidden-note {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 1;
+  touch-action: none;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+body.resizing-inspector .resize-handle::after {
+  background: var(--accent);
+}
+
+.resize-handle:focus-visible {
+  outline: none;
+}
+
+body.resizing-inspector {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .row-sheet header h2 {
@@ -576,6 +644,8 @@ table.log tbody tr.malformed td {
 }
 
 .row-sheet .body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
   display: flex;
@@ -745,6 +815,9 @@ table.log tbody tr.malformed td {
   }
 
   .row-sheet {
+    position: fixed;
+    z-index: 60;
+    box-shadow: var(--shadow-3);
     top: auto;
     right: 0;
     left: 0;
@@ -754,10 +827,15 @@ table.log tbody tr.malformed td {
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
     transform: translateY(100%);
+    transition: transform 0.22s ease;
   }
 
   .row-sheet.open {
     transform: translateY(0);
+  }
+
+  .row-sheet .resize-handle {
+    display: none;
   }
 
   table.log tbody td {
@@ -772,5 +850,30 @@ table.log tbody tr.malformed td {
 @media (min-width: 801px) {
   .mobile-only {
     display: none !important;
+  }
+
+  /* Desktop is a fixed-height workbench: the table scrolls on its own so the
+     docked inspector can sit beside it without covering anything. */
+  .app-shell {
+    height: 100dvh;
+  }
+
+  .main {
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .main.inspecting {
+    grid-template-columns: 280px minmax(0, 1fr) auto;
+  }
+
+  .row-sheet {
+    position: relative;
+    width: var(--inspector-width, 420px);
+    border-left: 1px solid var(--border);
+  }
+
+  .row-sheet:not(.open) {
+    display: none;
   }
 }
