@@ -11,7 +11,7 @@
   }
 </script>
 
-<button class="btn" disabled={rows.length === 0} on:click={exportRows} title="Export filtered rows as CSV">
+<button class="btn" type="button" disabled={rows.length === 0} on:click={exportRows} title="Export filtered rows as CSV">
   Export
-  <span style="font-variant-numeric: tabular-nums; color: var(--text-muted); font-weight: 500;">{rows.length.toLocaleString()}</span>
+  <span class="btn-count">{rows.length.toLocaleString()}</span>
 </button>

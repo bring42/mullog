@@ -30,7 +30,7 @@
   }
 </script>
 
-<aside class="filters" class:open aria-label="Filters">
+<aside id="filters-rail" class="filters" class:open aria-label="Filters">
   <div class="filters-group">
     <div class="group-label">Search</div>
     <input
@@ -109,5 +109,5 @@
     </details>
   {/if}
 
-  <button class="btn ghost mobile-only" on:click={() => dispatch('close')} style="margin-top: 8px;">Close filters</button>
+  <button class="btn close-filters mobile-only" type="button" on:click={() => dispatch('close')}>Close filters</button>
 </aside>

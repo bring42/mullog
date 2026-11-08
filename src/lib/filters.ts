@@ -114,41 +114,75 @@ export function highlightSegments(value: string, query: string, lead = 48, conte
   return segments;
 }
 
-export function describeActiveFilters(filters: FilterState): string[] {
-  const tokens: string[] = [];
-  if (filters.search.trim()) tokens.push(`search:${filters.search.trim()}`);
-  filters.categories.forEach((category) => tokens.push(`category:${category}`));
-  if (filters.from) tokens.push(`from:${filters.from}`);
-  if (filters.to) tokens.push(`to:${filters.to}`);
+/** One removable active filter, as shown in the chip bar above the table. */
+export type FilterToken =
+  | { kind: 'search'; value: string }
+  | { kind: 'category'; value: string }
+  | { kind: 'from'; value: string }
+  | { kind: 'to'; value: string }
+  | { kind: 'column'; column: string; value: string };
+
+export function describeActiveFilters(filters: FilterState): FilterToken[] {
+  const tokens: FilterToken[] = [];
+  const search = filters.search.trim();
+  if (search) tokens.push({ kind: 'search', value: search });
+  filters.categories.forEach((value) => tokens.push({ kind: 'category', value }));
+  if (filters.from) tokens.push({ kind: 'from', value: filters.from });
+  if (filters.to) tokens.push({ kind: 'to', value: filters.to });
   Object.entries(filters.columnFilters).forEach(([column, values]) => {
-    values.forEach((value) => tokens.push(`${column}:${value}`));
+    values.forEach((value) => tokens.push({ kind: 'column', column, value }));
   });
   return tokens;
 }
 
-export function clearFilterToken(filters: FilterState, token: string): FilterState {
-  if (token.startsWith('search:')) return { ...filters, search: '' };
-  if (token.startsWith('category:')) {
-    const value = token.replace('category:', '');
-    return { ...filters, categories: filters.categories.filter((category) => category !== value) };
-  }
-  if (token.startsWith('from:')) return { ...filters, from: '' };
-  if (token.startsWith('to:')) return { ...filters, to: '' };
+/** Stable key for keyed {#each} blocks. */
+export function filterTokenKey(token: FilterToken): string {
+  return token.kind === 'column' ? `column\u0000${token.column}\u0000${token.value}` : `${token.kind}\u0000${token.value}`;
+}
 
-  const separator = token.indexOf(':');
-  if (separator > -1) {
-    const column = token.slice(0, separator);
-    const value = token.slice(separator + 1);
-    return {
-      ...filters,
-      columnFilters: {
-        ...filters.columnFilters,
-        [column]: (filters.columnFilters[column] ?? []).filter((selected) => selected !== value)
-      }
-    };
+/**
+ * Human-readable chip text, split so the UI can de-emphasise the key:
+ * `"timeout"`, `severity: ERROR`, `From 2024-03-05 08:00`.
+ */
+export function filterTokenLabel(token: FilterToken): { key: string; value: string } {
+  switch (token.kind) {
+    case 'search':
+      return { key: '', value: `“${token.value}”` };
+    case 'category':
+      return { key: 'category:', value: token.value || '(empty)' };
+    case 'from':
+      return { key: 'From', value: formatLocalDateTime(token.value) };
+    case 'to':
+      return { key: 'Until', value: formatLocalDateTime(token.value) };
+    case 'column':
+      return { key: `${token.column}:`, value: token.value || '(empty)' };
   }
+}
 
-  return filters;
+/** `2024-03-05T08:00` (a datetime-local value) → `2024-03-05 08:00`. */
+function formatLocalDateTime(value: string): string {
+  return value.replace('T', ' ');
+}
+
+export function clearFilterToken(filters: FilterState, token: FilterToken): FilterState {
+  switch (token.kind) {
+    case 'search':
+      return { ...filters, search: '' };
+    case 'category':
+      return { ...filters, categories: filters.categories.filter((category) => category !== token.value) };
+    case 'from':
+      return { ...filters, from: '' };
+    case 'to':
+      return { ...filters, to: '' };
+    case 'column':
+      return {
+        ...filters,
+        columnFilters: {
+          ...filters.columnFilters,
+          [token.column]: (filters.columnFilters[token.column] ?? []).filter((selected) => selected !== token.value)
+        }
+      };
+  }
 }
 
 export function rowsToCsv(rows: LogRow[]): string {

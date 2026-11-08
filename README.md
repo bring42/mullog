@@ -28,7 +28,7 @@ A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filterin
   - `/` focuses search
   - `Esc` closes the selected row inspector and mobile filter drawer
   - `E` exports the current filtered result
-- Warm technical drafting-paper UI with utilitarian/neo-brutalist styling
+- Calm, neutral UI that follows the system light/dark setting, with AA-contrast text, visible keyboard focus and 44px touch targets on phones
 
 ## Open files from your phone
 

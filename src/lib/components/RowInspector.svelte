@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte';
+  import Icon from './Icon.svelte';
   import type { LogRow } from '$lib/types';
 
   export let row: LogRow | null = null;
@@ -186,7 +187,7 @@
           disabled={!canPrev}
           aria-label="Previous row"
           aria-keyshortcuts="ArrowUp K"
-          title="Previous row (↑ or k)">↑</button
+          title="Previous row (↑ or k)"><Icon name="arrow-up" /></button
         >
         <button
           class="btn ghost icon"
@@ -195,7 +196,7 @@
           disabled={!canNext}
           aria-label="Next row"
           aria-keyshortcuts="ArrowDown J"
-          title="Next row (↓ or j)">↓</button
+          title="Next row (↓ or j)"><Icon name="arrow-down" /></button
         >
         <button
           bind:this={closeButton}
@@ -204,7 +205,7 @@
           on:click={() => dispatch('close')}
           aria-label="Close row inspector"
           aria-keyshortcuts="Escape"
-          title="Close (Esc)">✕</button
+          title="Close (Esc)"><Icon name="close" /></button
         >
       </div>
     </header>

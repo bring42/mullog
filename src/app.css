@@ -1,31 +1,76 @@
+/* Every colour is a token here; dark mode redefines the same set below.
+   Text tokens hold at least 4.5:1 (WCAG AA) on every surface they sit on,
+   including the zebra stripe and the severity row tints. */
 :root {
+  color-scheme: light dark;
   --bg: #f7f6f3;
   --bg-elevated: #ffffff;
   --bg-muted: #efece6;
   --bg-row-hover: #f0eee9;
-  --bg-row-selected: #e8efff;
+  --bg-row-selected: #eaf0ff;
+  --row-stripe: #fbfaf7;
   --border: #e2dfd7;
   --border-strong: #cfcbc1;
   --text: #1f2024;
-  --text-muted: #6b6c72;
-  --text-faint: #9a9ba1;
+  --text-muted: #5f6066;
+  --text-faint: #67686e;
   --accent: #3759c2;
+  --accent-hover: #2c4ba8;
   --accent-soft: #e6ecfa;
-  --warn: #b35a00;
+  --on-accent: #ffffff;
+  --focus-ring: var(--accent);
+  --warn: #a35200;
   --warn-soft: #fbeedc;
   --error: #b1311f;
   --error-soft: #fadcd6;
+  --on-error: #ffffff;
   --row-error: #fdf2ef;
   --row-warn: #fdf7ec;
-  --row-fatal: #fbe4df;
+  --row-fatal: #fce8e4;
   --mark: #ffe79a;
+  --scrim: rgba(20, 24, 40, 0.35);
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-1: 0 1px 2px rgba(20, 24, 40, 0.04), 0 1px 1px rgba(20, 24, 40, 0.03);
   --shadow-2: 0 4px 16px rgba(20, 24, 40, 0.08), 0 2px 4px rgba(20, 24, 40, 0.04);
   --shadow-3: 0 12px 40px rgba(20, 24, 40, 0.18);
+  --chevron: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235f6066" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
   --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', 'Menlo', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --bg-elevated: #1b1c20;
+    --bg-muted: #26272c;
+    --bg-row-hover: #24262b;
+    --bg-row-selected: #1f2b47;
+    --row-stripe: #1f2024;
+    --border: #2e3036;
+    --border-strong: #42454d;
+    --text: #e7e7ea;
+    --text-muted: #a4a6ae;
+    --text-faint: #9496a0;
+    --accent: #8ea8ff;
+    --accent-hover: #a9bdff;
+    --accent-soft: #232d4a;
+    --on-accent: #0e1220;
+    --warn: #f2a55a;
+    --warn-soft: #3a2914;
+    --error: #ff8f80;
+    --error-soft: #45201b;
+    --on-error: #1a0d0b;
+    --row-error: #2a1b1a;
+    --row-warn: #28221a;
+    --row-fatal: #3b1d1a;
+    --mark: #6a5410;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.6);
+    --chevron: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%23a4a6ae" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  }
 }
 
 * {
@@ -141,6 +186,64 @@ a {
   align-items: center;
 }
 
+.btn-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.btn.icon {
+  position: relative;
+}
+
+/* Active-filter count on the phone filters button. */
+.btn .badge {
+  position: absolute;
+  top: 5px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.btn .warn-dot {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+}
+
+.btn .warn-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -167,12 +270,12 @@ a {
 
 .btn.primary {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
 .btn.primary:hover {
-  background: #2c4ba8;
+  background: var(--accent-hover);
 }
 
 .btn.ghost {
@@ -189,9 +292,7 @@ a {
   padding: 0 28px 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-elevated)
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%236b6c72" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>')
-    no-repeat right 10px center;
+  background: var(--bg-elevated) var(--chevron) no-repeat right 10px center;
   background-size: 10px 6px;
   color: var(--text);
   font: inherit;
@@ -213,11 +314,55 @@ a {
   width: 100%;
 }
 
+/* One visible focus ring for every interactive element. Text inputs show it on
+   any focus (you are typing into them); everything else only for keyboard focus. */
 .input:focus,
-.select:focus {
-  outline: 2px solid var(--accent-soft);
+.select:focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
   border-color: var(--accent);
+}
+
+.btn:focus-visible,
+.link-btn:focus-visible,
+.columns-toolbar button:focus-visible,
+.facet > summary:focus-visible,
+.dropzone:focus-visible,
+.facet-row:has(input:focus-visible),
+.detection-popover .panel .select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The chip's hit area is larger than its pill (see .chip), so hug the pill. */
+.active-filters .chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+.facet-row input:focus-visible {
+  outline: none;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 4px;
+  min-height: 32px;
+}
+
+.link-btn:hover {
+  color: var(--accent-hover);
+}
+
+.icon {
+  flex-shrink: 0;
+  display: block;
 }
 
 .row-count-pill {
@@ -266,46 +411,51 @@ table.log tbody tr {
 .active-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 0 2px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   align-items: center;
 }
 
+/* A transparent border pads the 26px pill out to a larger hit area without
+   making it look bigger: the background stops at the padding box. */
 .active-filters .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 10px;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 6px 0 10px;
+  border: 5px solid transparent;
   background: var(--accent-soft);
+  background-clip: padding-box;
   color: var(--accent);
   border-radius: 999px;
   font-size: 12px;
-  border: none;
   cursor: pointer;
-  max-width: 240px;
+  max-width: 280px;
 }
 
-.active-filters .chip span {
+.active-filters .chip .chip-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.active-filters .chip .x {
-  font-size: 14px;
-  line-height: 1;
+.active-filters .chip .chip-key {
+  opacity: 0.85;
+}
+
+.active-filters .chip .icon {
   opacity: 0.7;
 }
 
-.active-filters .chip:hover .x {
+.active-filters .chip:hover .icon {
   opacity: 1;
 }
 
-.active-filters .none {
-  font-size: 12px;
-  color: var(--text-faint);
+.active-filters .link-btn {
+  margin-left: 4px;
 }
 
 .table-scroll {
@@ -369,7 +519,7 @@ table.log tbody tr {
 }
 
 table.log tbody tr:nth-child(even) {
-  background: #fbfaf7;
+  background: var(--row-stripe);
 }
 
 table.log tbody tr.sev-warn {
@@ -456,7 +606,7 @@ table.log mark {
 
 .sev-tag.sev-fatal {
   background: var(--error);
-  color: #fff;
+  color: var(--on-error);
 }
 
 .sev-dot {
@@ -612,7 +762,7 @@ table.log tbody tr.malformed td {
 }
 
 .facet-row.zero {
-  opacity: 0.5;
+  color: var(--text-faint);
 }
 
 .columns-toolbar {
@@ -639,7 +789,7 @@ table.log tbody tr.malformed td {
 .scrim {
   position: fixed;
   inset: 0;
-  background: rgba(20, 24, 40, 0.35);
+  background: var(--scrim);
   z-index: 40;
   opacity: 0;
   pointer-events: none;
@@ -897,11 +1047,52 @@ table.log .more-lines {
   word-break: break-word;
 }
 
+.detection-popover .panel dt {
+  align-self: center;
+}
+
+.detection-popover .panel .encoding-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detection-popover .panel .encoding-row .select {
+  height: 30px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.detection-popover .panel .confidence {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .warn-line {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
   color: var(--warn);
+}
+
+.warn-line .icon {
+  margin-top: 1px;
+}
+
+.warn-line .warn-detail {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.detection-popover .panel-action {
+  width: 100%;
+  justify-content: center;
+  margin-top: 12px;
 }
 
 .dropzone {
@@ -955,11 +1146,12 @@ table.log .more-lines {
     width: min(320px, 88vw);
     transform: translateX(-100%);
     transition: transform 0.22s ease;
-    box-shadow: var(--shadow-3);
   }
 
+  /* Shadow only while open, or the parked drawer casts a grey strip on the left edge. */
   .filters.open {
     transform: translateX(0);
+    box-shadow: var(--shadow-3);
   }
 
   .row-sheet {
@@ -994,8 +1186,111 @@ table.log .more-lines {
     max-width: 0;
   }
 
-  .toolbar .file-meta {
-    display: none;
+  .desktop-only {
+    display: none !important;
+  }
+
+  /* Phone toolbar: one row - filters, file name, Export, overflow. */
+  .toolbar {
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px 4px 4px 2px;
+  }
+
+  .toolbar .file-block {
+    flex: 1 1 auto;
+    padding: 0 4px;
+  }
+
+  .toolbar-actions {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+
+  /* Touch targets: at least 44 x 44 px for everything you tap. */
+  .btn {
+    height: 44px;
+  }
+
+  .btn.icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* 16px stops iOS Safari zooming the page when a field gets focus. */
+  .input,
+  .select {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .filters-group .date-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .facet > summary {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .facet-body {
+    gap: 0;
+    max-height: 50dvh;
+  }
+
+  /* The whole row is the hit area; the checkbox alone is far too small. */
+  .facet-row {
+    min-height: 44px;
+    padding: 0 10px;
+    gap: 12px;
+    font-size: 14px;
+  }
+
+  .facet-row input {
+    width: 18px;
+    height: 18px;
+  }
+
+  .facet-row .count {
+    font-size: 12px;
+  }
+
+  .columns-toolbar button {
+    height: 44px;
+    font-size: 13px;
+  }
+
+  .active-filters {
+    padding: 0 6px;
+  }
+
+  .active-filters .chip {
+    min-height: 44px;
+    border-width: 9px 3px;
+  }
+
+  .link-btn {
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .close-filters {
+    flex-shrink: 0;
+    justify-content: center;
+  }
+
+  .detection-popover .panel {
+    position: fixed;
+    top: 56px;
+    left: 8px;
+    right: 8px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .detection-popover .panel .encoding-row .select {
+    height: 44px;
+    font-size: 16px;
   }
 }
 

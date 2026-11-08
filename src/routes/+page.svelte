@@ -6,8 +6,18 @@
   import LogTable from '$lib/components/LogTable.svelte';
   import RowInspector from '$lib/components/RowInspector.svelte';
   import ExportButton from '$lib/components/ExportButton.svelte';
+  import Icon from '$lib/components/Icon.svelte';
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
-  import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, facetColumnsFor } from '$lib/filters';
+  import {
+    applyFilters,
+    buildFacets,
+    clearFilterToken,
+    describeActiveFilters,
+    emptyFilters,
+    facetColumnsFor,
+    filterTokenKey,
+    filterTokenLabel
+  } from '$lib/filters';
   import { parseLogText } from '$lib/parser';
   import { decodeHashPayload, hasHashPayload, takePendingShare } from '$lib/share';
   import type { ColumnMeta, DetectionState, EncodingName, FilterState, LogRow, ParseWarning } from '$lib/types';
@@ -322,32 +332,48 @@
 {:else}
   <div class="app-shell">
     <header class="toolbar">
+      <button
+        class="btn ghost icon mobile-only"
+        type="button"
+        on:click={() => (filtersOpen = true)}
+        aria-label={activeTokens.length > 0 ? `Open filters, ${activeTokens.length} active` : 'Open filters'}
+        aria-expanded={filtersOpen}
+        aria-controls="filters-rail"
+      >
+        <Icon name="filter" size={18} />
+        {#if activeTokens.length > 0}<span class="badge" aria-hidden="true">{activeTokens.length}</span>{/if}
+      </button>
+
       <div class="file-block">
         <div class="file-name" title={fileName}>{fileName}</div>
-        <div class="file-meta">{formatSize(fileSize)} · {rows.length.toLocaleString()} rows</div>
+        <div class="file-meta desktop-only">{formatSize(fileSize)} · {rows.length.toLocaleString()} rows</div>
+        <div class="file-meta mobile-only">
+          {#if filteredRows.length === rows.length}
+            {rows.length.toLocaleString()} rows
+          {:else}
+            {filteredRows.length.toLocaleString()} of {rows.length.toLocaleString()} rows
+          {/if}
+        </div>
       </div>
 
       <div class="toolbar-actions">
-        <button class="btn ghost mobile-only" type="button" on:click={() => (filtersOpen = true)} aria-label="Open filters">
-          ☰
-        </button>
-
-        <span class="row-count-pill"><b>{filteredRows.length.toLocaleString()}</b> shown</span>
-
-        <select
-          class="select"
-          value={encoding}
-          on:change={(event) => changeEncoding((event.currentTarget as HTMLSelectElement).value as EncodingName)}
-          title="Encoding"
-        >
-          {#each encodings as item}
-            <option value={item}>{item}</option>
-          {/each}
-        </select>
-
-        <DetectionPanel {detection} />
+        <span class="row-count-pill desktop-only"><b>{filteredRows.length.toLocaleString()}</b> shown</span>
+        <div class="desktop-only">
+          <DetectionPanel {detection} {encoding} {encodings} on:encodingChange={(event) => changeEncoding(event.detail)} />
+        </div>
         <ExportButton rows={filteredRows} fileName={exportName} />
-        <button class="btn ghost" type="button" on:click={clearFile} title="Load another file">New file</button>
+        <button class="btn ghost desktop-only" type="button" on:click={clearFile} title="Load another file">New file</button>
+        <div class="mobile-only">
+          <DetectionPanel
+            variant="overflow"
+            {detection}
+            {encoding}
+            {encodings}
+            fileSize={formatSize(fileSize)}
+            on:encodingChange={(event) => changeEncoding(event.detail)}
+            on:newFile={clearFile}
+          />
+        </div>
       </div>
     </header>
 
@@ -377,13 +403,23 @@
 
       <section class="table-region" aria-label="Log rows">
         {#if activeTokens.length > 0}
-          <div class="active-filters">
-            {#each activeTokens as token}
-              <button class="chip" on:click={() => (filters = clearFilterToken(filters, token))}>
-                <span>{token}</span>
-                <span class="x">×</span>
+          <div class="active-filters" role="group" aria-label="Active filters">
+            {#each activeTokens as token (filterTokenKey(token))}
+              {@const label = filterTokenLabel(token)}
+              <button
+                class="chip"
+                type="button"
+                title="Remove filter"
+                aria-label="Remove filter {[label.key, label.value].filter(Boolean).join(' ')}"
+                on:click={() => (filters = clearFilterToken(filters, token))}
+              >
+                <span class="chip-label">{#if label.key}<span class="chip-key">{label.key}</span>{' '}{/if}{label.value}</span>
+                <Icon name="close" size={12} />
               </button>
             {/each}
+            {#if activeTokens.length >= 2}
+              <button class="link-btn" type="button" on:click={() => (filters = { ...emptyFilters, columnFilters: {} })}>Clear all</button>
+            {/if}
           </div>
         {/if}
 
