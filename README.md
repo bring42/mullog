@@ -50,6 +50,9 @@ Sharing plain text (not a file) to mullog also works; it is opened as `shared.lo
 
 ### iPhone / iPad (Shortcuts)
 
+You can add mullog to the Home Screen (Safari → Share → **Add to Home Screen**) and it runs full screen and works offline. Inside that app you can open files with the file picker (Files, iCloud Drive, …) or tap **Paste log text**. iOS doesn't let home-screen web apps appear in the share sheet, though, and links opened by a Shortcut always open in Safari, not in the home-screen app. So the Shortcut below hands the file to mullog in Safari.
+
+
 Safari does not support web share targets yet, so use a Shortcut that packs the file into a link:
 
 1. Open **Shortcuts** → **+** → name it e.g. "Open in mullog".
