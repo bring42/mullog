@@ -36,8 +36,10 @@ mullog can be installed as an app and receive files from the system share sheet 
 
 ### Android (Chrome)
 
-1. Open https://log.n527.eu in Chrome and choose **⋮ → Add to Home screen / Install app**.
+1. Open https://log.n527.eu in Chrome and choose **⋮ → Install app** (or accept the install prompt). The installed app opens in its own window, without the Chrome address bar.
 2. In any app (Files, Gmail, Termux, …) share a `.log`, `.txt`, `.csv` or `.tsv` file and pick **mullog**. It opens straight away.
+
+mullog only appears in the share sheet after a real install. A shortcut-style **Add to home screen** (an icon that opens a Chrome tab) is not enough. If you made one of those before mullog was installable, remove it from the home screen, reload the site once, then use **Install app**. If Chrome only offers "Add to home screen", reload the page and wait a few seconds so the service worker can register, then open the menu again.
 
 Sharing plain text (not a file) to mullog also works; it is opened as `shared.log`.
 
