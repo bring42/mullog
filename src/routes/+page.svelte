@@ -9,6 +9,7 @@
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
   import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, facetColumnsFor } from '$lib/filters';
   import { parseLogText } from '$lib/parser';
+  import { decodeHashPayload, hasHashPayload, takePendingShare } from '$lib/share';
   import type { ColumnMeta, DetectionState, EncodingName, FilterState, LogRow, ParseWarning } from '$lib/types';
 
   let currentBuffer: ArrayBuffer | null = null;
@@ -26,6 +27,7 @@
   let visibleColumns: string[] = [];
   let filtersOpen = false;
   let parseError = '';
+  let loadError = '';
   let schemaKey = '';
 
   const encodings = supportedEncodings();
@@ -43,16 +45,99 @@
 
   onMount(() => {
     window.addEventListener('keydown', handleKeyboard);
-    return () => window.removeEventListener('keydown', handleKeyboard);
+    window.addEventListener('hashchange', loadFromHash);
+    document.addEventListener('paste', handlePasteEvent);
+    void loadIncoming();
+    return () => {
+      window.removeEventListener('keydown', handleKeyboard);
+      window.removeEventListener('hashchange', loadFromHash);
+      document.removeEventListener('paste', handlePasteEvent);
+    };
   });
+
+  /** Picks up files handed over by the OS: share sheet, "Open with", or an iOS Shortcut URL. */
+  async function loadIncoming() {
+    const params = new URLSearchParams(location.search);
+    const shared = params.get('shared');
+    if (shared) {
+      history.replaceState(history.state, '', location.pathname + location.hash);
+      try {
+        const pending = shared === '1' ? await takePendingShare() : null;
+        if (pending) loadFile(pending.name, pending.buffer);
+        else if (shared === 'empty') loadError = 'Nothing was shared — the share contained no file or text.';
+        else loadError = 'The shared file could not be opened. Try sharing it again, or open it with the file picker.';
+      } catch {
+        loadError = 'The shared file could not be read from local storage.';
+      }
+    }
+
+    if ('launchQueue' in window && window.launchQueue) {
+      window.launchQueue.setConsumer(async (launchParams) => {
+        const handle = launchParams.files[0];
+        if (!handle || handle.kind !== 'file') return;
+        try {
+          const file = await (handle as FileSystemFileHandle).getFile();
+          loadFile(file.name, await file.arrayBuffer());
+        } catch {
+          loadError = 'The file could not be opened.';
+        }
+      });
+    }
+
+    await loadFromHash();
+  }
+
+  async function loadFromHash() {
+    if (!hasHashPayload(location.hash)) return;
+    const hash = location.hash;
+    // Drop the payload from the address bar and history right away.
+    history.replaceState(history.state, '', location.pathname + location.search);
+    try {
+      const incoming = await decodeHashPayload(hash);
+      loadFile(incoming.name, incoming.buffer);
+    } catch (error) {
+      loadError = error instanceof Error ? error.message : 'The link could not be decoded.';
+    }
+  }
 
   async function handleFiles(event: CustomEvent<File[]>) {
     const file = event.detail[0];
     if (!file) return;
+    loadFile(file.name, await file.arrayBuffer());
+  }
 
-    currentBuffer = await file.arrayBuffer();
-    fileName = file.name;
-    fileSize = file.size;
+  async function pasteFromClipboard() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        loadError = 'The clipboard is empty.';
+        return;
+      }
+      loadText(text);
+    } catch {
+      loadError = 'Clipboard access was blocked. Press Ctrl/⌘+V on this page instead.';
+    }
+  }
+
+  function handlePasteEvent(event: ClipboardEvent) {
+    if (hasFile) return;
+    const target = event.target as HTMLElement | null;
+    if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA') return;
+    const text = event.clipboardData?.getData('text/plain');
+    if (!text) return;
+    event.preventDefault();
+    loadText(text);
+  }
+
+  function loadText(text: string) {
+    loadFile('pasted.log', new TextEncoder().encode(text).buffer as ArrayBuffer);
+  }
+
+  function loadFile(name: string, buffer: ArrayBuffer) {
+    loadError = '';
+    currentBuffer = buffer;
+    fileName = name;
+    fileSize = buffer.byteLength;
     const detected = detectEncoding(currentBuffer);
     encoding = detected.encoding;
     encodingConfidence = detected.confidence;
@@ -129,6 +214,7 @@
     visibleColumns = [];
     schemaKey = '';
     parseError = '';
+    loadError = '';
   }
 
   function formatSize(bytes: number): string {
@@ -163,6 +249,10 @@
       <h1>mullog</h1>
       <p class="lede">Local CSV &amp; log inspector. Files never leave your browser.</p>
       <FileDropzone on:files={handleFiles} />
+      <button class="btn ghost paste-btn" type="button" on:click={pasteFromClipboard}>Paste log text</button>
+      {#if loadError}
+        <div class="parse-error load-error" role="alert">{loadError}</div>
+      {/if}
       <div class="empty-foot">Supports .csv, .tsv, .log, .txt — UTF-8, Windows-1252, and ISO-8859-1.</div>
     </div>
   </div>
@@ -200,6 +290,9 @@
 
     {#if parseError}
       <div class="parse-error"><strong>Parser error:</strong> {parseError}</div>
+    {/if}
+    {#if loadError}
+      <div class="parse-error" role="alert">{loadError}</div>
     {/if}
 
     <div class="main">
@@ -253,5 +346,15 @@
   .scrim {
     border: none;
     padding: 0;
+  }
+
+  .paste-btn {
+    margin-top: 12px;
+    color: var(--text-muted);
+  }
+
+  .load-error {
+    margin: 14px 0 0;
+    text-align: left;
   }
 </style>
