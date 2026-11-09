@@ -1,8 +1,20 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
 
-  export let headline = 'Drop a .csv, .tsv, .log or .txt';
+  export let headline = 'Drop a log, CSV, Excel or JSON file';
   export let hint = 'Or click to choose. Everything stays on this device.';
+
+  const ACCEPTED_TYPES = [
+    'text/plain',
+    'text/csv',
+    'text/tab-separated-values',
+    'application/json',
+    'application/x-ndjson',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.oasis.opendocument.spreadsheet'
+  ];
+  const ACCEPT = ['.txt', '.csv', '.tsv', '.log', '.json', '.jsonl', '.ndjson', '.xlsx', '.xlsm', '.xlsb', '.xls', '.ods', ...ACCEPTED_TYPES].join(',');
 
   const dispatch = createEventDispatcher<{ files: File[] }>();
   let dragging = false;
@@ -11,8 +23,7 @@
   function emitFiles(fileList: FileList | null) {
     const files = [...(fileList ?? [])].filter(
       (file) =>
-        /\.(txt|csv|tsv|log)$/i.test(file.name) ||
-        ['text/plain', 'text/csv', 'text/tab-separated-values', 'application/vnd.ms-excel'].includes(file.type)
+        /\.(txt|csv|tsv|log|json|jsonl|ndjson|xlsx|xlsm|xlsb|xls|ods)$/i.test(file.name) || ACCEPTED_TYPES.includes(file.type)
     );
     if (files.length > 0) dispatch('files', files);
   }
@@ -39,7 +50,7 @@
   <input
     bind:this={input}
     type="file"
-    accept=".txt,.csv,.tsv,.log,text/plain,text/csv,text/tab-separated-values"
+    accept={ACCEPT}
     on:change={(event) => emitFiles((event.currentTarget as HTMLInputElement).files)}
   />
   <div class="dz-headline">{headline}</div>

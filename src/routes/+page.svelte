@@ -18,9 +18,10 @@
     filterTokenKey,
     filterTokenLabel
   } from '$lib/filters';
-  import { parseLogText } from '$lib/parser';
+  import { parseLogText, parseSpreadsheet } from '$lib/parser';
+  import { firstUsefulSheet, readWorkbook, spreadsheetType, type Workbook } from '$lib/spreadsheet';
   import { decodeHashPayload, hasHashPayload, takePendingShare } from '$lib/share';
-  import type { ColumnMeta, DetectionState, EncodingName, FilterState, LogRow, ParseWarning } from '$lib/types';
+  import type { ColumnMeta, DetectionState, EncodingName, FilterState, LogRow, ParseWarning, SpreadsheetType } from '$lib/types';
 
   let currentBuffer: ArrayBuffer | null = null;
   let currentText = '';
@@ -39,10 +40,15 @@
   let parseError = '';
   let loadError = '';
   let schemaKey = '';
+  let fileLoaded = false;
+  let loadingMessage = '';
+  let workbook: Workbook | null = null;
+  let workbookType: SpreadsheetType | null = null;
+  let sheetIndex = 0;
 
   const encodings = supportedEncodings();
 
-  $: hasFile = currentText.length > 0;
+  $: hasFile = fileLoaded;
   $: filteredRows = applyFilters(rows, filters);
   $: schema = detection?.schema ?? [];
   $: severityColumn = schema.find((column) => column.role === 'severity')?.name;
@@ -147,8 +153,42 @@
     loadFile('pasted.log', new TextEncoder().encode(text).buffer as ArrayBuffer);
   }
 
-  function loadFile(name: string, buffer: ArrayBuffer) {
+  let loadToken = 0;
+
+  async function loadFile(name: string, buffer: ArrayBuffer) {
+    const token = ++loadToken;
     loadError = '';
+    parseError = '';
+    filters = { ...emptyFilters, columnFilters: {} };
+    selectedRow = null;
+
+    const sheetType = spreadsheetType(name, buffer);
+    if (sheetType) {
+      loadingMessage = `Reading ${name}…`;
+      try {
+        const book = await readWorkbook(buffer);
+        if (token !== loadToken) return;
+        currentBuffer = buffer;
+        currentText = '';
+        fileName = name;
+        fileSize = buffer.byteLength;
+        workbook = book;
+        workbookType = sheetType;
+        sheetIndex = firstUsefulSheet(book);
+        fileLoaded = true;
+        parseCurrent();
+      } catch (error) {
+        if (token !== loadToken) return;
+        loadError = `${name} could not be read as a spreadsheet${error instanceof Error && error.message ? `: ${error.message}` : '.'}`;
+      } finally {
+        if (token === loadToken) loadingMessage = '';
+      }
+      return;
+    }
+
+    loadingMessage = '';
+    workbook = null;
+    workbookType = null;
     currentBuffer = buffer;
     fileName = name;
     fileSize = buffer.byteLength;
@@ -158,23 +198,31 @@
     encodingNotes = detected.notes;
     encodingWarnings = detected.warnings;
     currentText = decodeBuffer(currentBuffer, encoding);
-    filters = { ...emptyFilters, columnFilters: {} };
-    selectedRow = null;
+    fileLoaded = true;
     parseCurrent();
   }
 
   function parseCurrent() {
     try {
       parseError = '';
-      const result = parseLogText(currentText, {
+      const options = {
         fileName,
         fileSize,
         encoding,
         encodingConfidence,
         encodingNotes,
         encodingWarnings,
-        parserMode: 'auto'
-      });
+        parserMode: 'auto' as const
+      };
+      const result =
+        workbook && workbookType
+          ? parseSpreadsheet(
+              workbook.sheets[sheetIndex] ?? { name: 'Sheet1', rows: [] },
+              workbook.sheets.map((sheet) => sheet.name),
+              workbookType,
+              { ...options, encoding: 'utf-8', encodingConfidence: 1, encodingNotes: ['Cells are read by the spreadsheet reader; no text encoding applies.'], encodingWarnings: [] }
+            )
+          : parseLogText(currentText, options);
       detection = result.detection;
       rows = result.rows;
       syncVisibleColumns(result.detection.schema);
@@ -182,6 +230,14 @@
     } catch (error) {
       parseError = error instanceof Error ? error.message : 'Unknown parser error.';
     }
+  }
+
+  function changeSheet(index: number) {
+    if (!workbook || index === sheetIndex) return;
+    sheetIndex = index;
+    filters = { ...emptyFilters, columnFilters: {} };
+    selectedRow = null;
+    parseCurrent();
   }
 
   function changeEncoding(nextEncoding: EncodingName) {
@@ -217,6 +273,12 @@
   }
 
   function clearFile() {
+    loadToken += 1;
+    fileLoaded = false;
+    loadingMessage = '';
+    workbook = null;
+    workbookType = null;
+    sheetIndex = 0;
     currentBuffer = null;
     currentText = '';
     fileName = '';
@@ -320,13 +382,18 @@
   <div class="empty-shell">
     <div class="empty-card">
       <h1>mullog</h1>
-      <p class="lede">Local CSV &amp; log inspector. Files never leave your browser.</p>
+      <p class="lede">Local log, CSV, Excel &amp; JSON inspector. Files never leave your browser.</p>
       <FileDropzone on:files={handleFiles} />
       <button class="btn ghost paste-btn" type="button" on:click={pasteFromClipboard}>Paste log text</button>
+      {#if loadingMessage}
+        <div class="loading-line" role="status">{loadingMessage}</div>
+      {/if}
       {#if loadError}
         <div class="parse-error load-error" role="alert">{loadError}</div>
       {/if}
-      <div class="empty-foot">Supports .csv, .tsv, .log, .txt — UTF-8, Windows-1252, and ISO-8859-1.</div>
+      <div class="empty-foot">
+        Logs (.log, .txt), CSV/TSV, Excel (.xlsx, .xls), OpenDocument (.ods), JSON and JSON Lines — UTF-8, Windows-1252, and ISO-8859-1.
+      </div>
     </div>
   </div>
 {:else}
@@ -346,6 +413,20 @@
 
       <div class="file-block">
         <div class="file-name" title={fileName}>{fileName}</div>
+        {#if workbook && workbook.sheets.length > 1}
+          <label class="sheet-picker">
+            <span class="sr-only">Sheet</span>
+            <select
+              class="select sheet-select"
+              value={sheetIndex}
+              on:change={(event) => changeSheet(Number((event.currentTarget as HTMLSelectElement).value))}
+            >
+              {#each workbook.sheets as sheet, index}
+                <option value={index}>{sheet.name} ({Math.max(sheet.rows.length - 1, 0).toLocaleString()} rows)</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
         <div class="file-meta desktop-only">{formatSize(fileSize)} · {rows.length.toLocaleString()} rows</div>
         <div class="file-meta mobile-only">
           {#if filteredRows.length === rows.length}
@@ -359,7 +440,7 @@
       <div class="toolbar-actions">
         <span class="row-count-pill desktop-only"><b>{filteredRows.length.toLocaleString()}</b> shown</span>
         <div class="desktop-only">
-          <DetectionPanel {detection} {encoding} {encodings} on:encodingChange={(event) => changeEncoding(event.detail)} />
+          <DetectionPanel {detection} {encoding} encodings={workbook ? [] : encodings} on:encodingChange={(event) => changeEncoding(event.detail)} />
         </div>
         <ExportButton rows={filteredRows} fileName={exportName} />
         <button class="btn ghost desktop-only" type="button" on:click={clearFile} title="Load another file">New file</button>
@@ -368,7 +449,7 @@
             variant="overflow"
             {detection}
             {encoding}
-            {encodings}
+            encodings={workbook ? [] : encodings}
             fileSize={formatSize(fileSize)}
             on:encodingChange={(event) => changeEncoding(event.detail)}
             on:newFile={clearFile}
