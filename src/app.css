@@ -1,27 +1,76 @@
+/* Every colour is a token here; dark mode redefines the same set below.
+   Text tokens hold at least 4.5:1 (WCAG AA) on every surface they sit on,
+   including the zebra stripe and the severity row tints. */
 :root {
+  color-scheme: light dark;
   --bg: #f7f6f3;
   --bg-elevated: #ffffff;
   --bg-muted: #efece6;
   --bg-row-hover: #f0eee9;
-  --bg-row-selected: #e8efff;
+  --bg-row-selected: #eaf0ff;
+  --row-stripe: #fbfaf7;
   --border: #e2dfd7;
   --border-strong: #cfcbc1;
   --text: #1f2024;
-  --text-muted: #6b6c72;
-  --text-faint: #9a9ba1;
+  --text-muted: #5f6066;
+  --text-faint: #67686e;
   --accent: #3759c2;
+  --accent-hover: #2c4ba8;
   --accent-soft: #e6ecfa;
-  --warn: #b35a00;
+  --on-accent: #ffffff;
+  --focus-ring: var(--accent);
+  --warn: #a35200;
   --warn-soft: #fbeedc;
   --error: #b1311f;
   --error-soft: #fadcd6;
+  --on-error: #ffffff;
+  --row-error: #fdf2ef;
+  --row-warn: #fdf7ec;
+  --row-fatal: #fce8e4;
+  --mark: #ffe79a;
+  --scrim: rgba(20, 24, 40, 0.35);
   --radius: 10px;
   --radius-sm: 6px;
   --shadow-1: 0 1px 2px rgba(20, 24, 40, 0.04), 0 1px 1px rgba(20, 24, 40, 0.03);
   --shadow-2: 0 4px 16px rgba(20, 24, 40, 0.08), 0 2px 4px rgba(20, 24, 40, 0.04);
   --shadow-3: 0 12px 40px rgba(20, 24, 40, 0.18);
+  --chevron: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%235f6066" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
   --font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', 'Menlo', monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131417;
+    --bg-elevated: #1b1c20;
+    --bg-muted: #26272c;
+    --bg-row-hover: #24262b;
+    --bg-row-selected: #1f2b47;
+    --row-stripe: #1f2024;
+    --border: #2e3036;
+    --border-strong: #42454d;
+    --text: #e7e7ea;
+    --text-muted: #a4a6ae;
+    --text-faint: #9496a0;
+    --accent: #8ea8ff;
+    --accent-hover: #a9bdff;
+    --accent-soft: #232d4a;
+    --on-accent: #0e1220;
+    --warn: #f2a55a;
+    --warn-soft: #3a2914;
+    --error: #ff8f80;
+    --error-soft: #45201b;
+    --on-error: #1a0d0b;
+    --row-error: #2a1b1a;
+    --row-warn: #28221a;
+    --row-fatal: #3b1d1a;
+    --mark: #6a5410;
+    --scrim: rgba(0, 0, 0, 0.55);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
+    --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.6);
+    --chevron: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%23a4a6ae" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+  }
 }
 
 * {
@@ -137,6 +186,64 @@ a {
   align-items: center;
 }
 
+.btn-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.btn.icon {
+  position: relative;
+}
+
+/* Active-filter count on the phone filters button. */
+.btn .badge {
+  position: absolute;
+  top: 5px;
+  right: 3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.btn .warn-dot {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 0 2px var(--bg-elevated);
+}
+
+.btn .warn-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -163,12 +270,12 @@ a {
 
 .btn.primary {
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   border-color: var(--accent);
 }
 
 .btn.primary:hover {
-  background: #2c4ba8;
+  background: var(--accent-hover);
 }
 
 .btn.ghost {
@@ -185,9 +292,7 @@ a {
   padding: 0 28px 0 10px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-elevated)
-    url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6" viewBox="0 0 10 6"><path d="M1 1l4 4 4-4" fill="none" stroke="%236b6c72" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>')
-    no-repeat right 10px center;
+  background: var(--bg-elevated) var(--chevron) no-repeat right 10px center;
   background-size: 10px 6px;
   color: var(--text);
   font: inherit;
@@ -209,11 +314,55 @@ a {
   width: 100%;
 }
 
+/* One visible focus ring for every interactive element. Text inputs show it on
+   any focus (you are typing into them); everything else only for keyboard focus. */
 .input:focus,
-.select:focus {
-  outline: 2px solid var(--accent-soft);
+.select:focus-visible {
+  outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
   border-color: var(--accent);
+}
+
+.btn:focus-visible,
+.link-btn:focus-visible,
+.columns-toolbar button:focus-visible,
+.facet > summary:focus-visible,
+.dropzone:focus-visible,
+.facet-row:has(input:focus-visible),
+.detection-popover .panel .select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The chip's hit area is larger than its pill (see .chip), so hug the pill. */
+.active-filters .chip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+
+.facet-row input:focus-visible {
+  outline: none;
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 4px;
+  min-height: 32px;
+}
+
+.link-btn:hover {
+  color: var(--accent-hover);
+}
+
+.icon {
+  flex-shrink: 0;
+  display: block;
 }
 
 .row-count-pill {
@@ -246,6 +395,10 @@ a {
   flex-direction: column;
 }
 
+table.log tbody tr {
+  scroll-margin-top: 40px;
+}
+
 .parse-error {
   margin: 12px;
   padding: 12px 14px;
@@ -258,46 +411,51 @@ a {
 .active-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 0 2px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   align-items: center;
 }
 
+/* A transparent border pads the 26px pill out to a larger hit area without
+   making it look bigger: the background stops at the padding box. */
 .active-filters .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 10px;
+  gap: 4px;
+  min-height: 36px;
+  padding: 0 6px 0 10px;
+  border: 5px solid transparent;
   background: var(--accent-soft);
+  background-clip: padding-box;
   color: var(--accent);
   border-radius: 999px;
   font-size: 12px;
-  border: none;
   cursor: pointer;
-  max-width: 240px;
+  max-width: 280px;
 }
 
-.active-filters .chip span {
+.active-filters .chip .chip-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.active-filters .chip .x {
-  font-size: 14px;
-  line-height: 1;
+.active-filters .chip .chip-key {
+  opacity: 0.85;
+}
+
+.active-filters .chip .icon {
   opacity: 0.7;
 }
 
-.active-filters .chip:hover .x {
+.active-filters .chip:hover .icon {
   opacity: 1;
 }
 
-.active-filters .none {
-  font-size: 12px;
-  color: var(--text-faint);
+.active-filters .link-btn {
+  margin-left: 4px;
 }
 
 .table-scroll {
@@ -361,7 +519,29 @@ table.log tbody tr {
 }
 
 table.log tbody tr:nth-child(even) {
-  background: #fbfaf7;
+  background: var(--row-stripe);
+}
+
+table.log tbody tr.sev-warn {
+  background: var(--row-warn);
+}
+
+table.log tbody tr.sev-error {
+  background: var(--row-error);
+}
+
+table.log tbody tr.sev-fatal {
+  background: var(--row-fatal);
+}
+
+/* Severity edge marker, drawn on the first cell so it works in table layout. */
+table.log tbody tr.sev-warn td.line-num {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+table.log tbody tr.sev-error td.line-num,
+table.log tbody tr.sev-fatal td.line-num {
+  box-shadow: inset 3px 0 0 var(--error);
 }
 
 table.log tbody tr:hover {
@@ -370,6 +550,84 @@ table.log tbody tr:hover {
 
 table.log tbody tr.selected {
   background: var(--bg-row-selected);
+}
+
+table.log tbody tr:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The message column takes every pixel the other columns don't need. */
+table.log.has-flex th.message,
+table.log.has-flex td.message {
+  width: 100%;
+  max-width: 0;
+}
+
+table.log td.severity {
+  width: 1%;
+}
+
+table.log mark {
+  background: var(--mark);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.sev-tag {
+  display: inline-block;
+  min-width: 46px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
+.sev-tag.sev-info {
+  background: var(--bg-muted);
+  color: var(--text);
+}
+
+.sev-tag.sev-warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sev-tag.sev-error {
+  background: var(--error-soft);
+  color: var(--error);
+}
+
+.sev-tag.sev-fatal {
+  background: var(--error);
+  color: var(--on-error);
+}
+
+.sev-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border-strong);
+}
+
+.sev-dot.sev-info {
+  background: var(--text-muted);
+}
+
+.sev-dot.sev-warn {
+  background: var(--warn);
+}
+
+.sev-dot.sev-error,
+.sev-dot.sev-fatal {
+  background: var(--error);
 }
 
 table.log tbody tr.malformed td {
@@ -493,10 +751,18 @@ table.log tbody tr.malformed td {
 }
 
 .facet-row .count {
-  color: var(--text-faint);
+  color: var(--text-muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+}
+
+.facet-row .count .of {
+  color: var(--text-faint);
+}
+
+.facet-row.zero {
+  color: var(--text-faint);
 }
 
 .columns-toolbar {
@@ -523,7 +789,7 @@ table.log tbody tr.malformed td {
 .scrim {
   position: fixed;
   inset: 0;
-  background: rgba(20, 24, 40, 0.35);
+  background: var(--scrim);
   z-index: 40;
   opacity: 0;
   pointer-events: none;
@@ -536,31 +802,95 @@ table.log tbody tr.malformed td {
 }
 
 .row-sheet {
-  position: fixed;
-  z-index: 60;
   background: var(--bg-elevated);
-  box-shadow: var(--shadow-3);
   display: flex;
   flex-direction: column;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(480px, 100%);
-  transform: translateX(100%);
-  transition: transform 0.22s ease;
+  min-height: 0;
 }
 
-.row-sheet.open {
-  transform: translateX(0);
+.row-sheet:focus {
+  outline: none;
 }
 
 .row-sheet header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 14px 16px;
+  padding: 12px 12px 12px 16px;
   border-bottom: 1px solid var(--border);
   gap: 12px;
+}
+
+.row-sheet .title-block {
+  min-width: 0;
+}
+
+.row-sheet .sheet-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.row-sheet .position {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+.btn.icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.row-sheet .hidden-note {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 1;
+  touch-action: none;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+body.resizing-inspector .resize-handle::after {
+  background: var(--accent);
+}
+
+.resize-handle:focus-visible {
+  outline: none;
+}
+
+body.resizing-inspector {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .row-sheet header h2 {
@@ -576,6 +906,8 @@ table.log tbody tr.malformed td {
 }
 
 .row-sheet .body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 16px;
   display: flex;
@@ -603,6 +935,29 @@ table.log tbody tr.malformed td {
   word-break: break-word;
 }
 
+/* Stack traces: keep each frame on one line and scroll sideways rather than wrapping mid-frame. */
+.row-sheet .raw.multi {
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  tab-size: 4;
+  line-height: 1.5;
+}
+
+table.log .more-lines {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 18px;
+  vertical-align: 1px;
+}
+
+
 .field-grid {
   display: grid;
   grid-template-columns: minmax(110px, max-content) 1fr;
@@ -621,6 +976,19 @@ table.log tbody tr.malformed td {
   font-size: 12px;
   word-break: break-word;
   white-space: pre-wrap;
+}
+
+/* Multi-line values (merged stack traces) get the full sheet width and scroll sideways. */
+.field-grid .v.block {
+  grid-column: 1 / -1;
+  margin: 2px 0 6px;
+  padding: 8px 10px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-sm);
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  line-height: 1.5;
 }
 
 .field-grid .v.empty {
@@ -679,11 +1047,52 @@ table.log tbody tr.malformed td {
   word-break: break-word;
 }
 
+.detection-popover .panel dt {
+  align-self: center;
+}
+
+.detection-popover .panel .encoding-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.detection-popover .panel .encoding-row .select {
+  height: 30px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.detection-popover .panel .confidence {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .warn-line {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
   color: var(--warn);
+}
+
+.warn-line .icon {
+  margin-top: 1px;
+}
+
+.warn-line .warn-detail {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.detection-popover .panel-action {
+  width: 100%;
+  justify-content: center;
+  margin-top: 12px;
 }
 
 .dropzone {
@@ -737,14 +1146,18 @@ table.log tbody tr.malformed td {
     width: min(320px, 88vw);
     transform: translateX(-100%);
     transition: transform 0.22s ease;
+  }
+
+  /* Shadow only while open, or the parked drawer casts a grey strip on the left edge. */
+  .filters.open {
+    transform: translateX(0);
     box-shadow: var(--shadow-3);
   }
 
-  .filters.open {
-    transform: translateX(0);
-  }
-
   .row-sheet {
+    position: fixed;
+    z-index: 60;
+    box-shadow: var(--shadow-3);
     top: auto;
     right: 0;
     left: 0;
@@ -754,23 +1167,228 @@ table.log tbody tr.malformed td {
     border-top-left-radius: 16px;
     border-top-right-radius: 16px;
     transform: translateY(100%);
+    transition: transform 0.22s ease;
   }
 
   .row-sheet.open {
     transform: translateY(0);
   }
 
+  .row-sheet .resize-handle {
+    display: none;
+  }
+
   table.log tbody td {
     max-width: 220px;
   }
 
-  .toolbar .file-meta {
+  table.log.has-flex td.message {
+    max-width: 0;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  /* Phone toolbar: one row - filters, file name, Export, overflow. */
+  .toolbar {
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 4px 4px 4px 2px;
+  }
+
+  .toolbar .file-block {
+    flex: 1 1 auto;
+    padding: 0 4px;
+  }
+
+  .toolbar-actions {
+    flex-wrap: nowrap;
+    gap: 2px;
+  }
+
+  /* Touch targets: at least 44 x 44 px for everything you tap. */
+  .btn {
+    height: 44px;
+  }
+
+  .btn.icon {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* 16px stops iOS Safari zooming the page when a field gets focus. */
+  .input,
+  .select {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .filters-group .date-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .facet > summary {
+    min-height: 44px;
+    font-size: 13px;
+  }
+
+  .facet-body {
+    gap: 0;
+    max-height: 50dvh;
+  }
+
+  /* The whole row is the hit area; the checkbox alone is far too small. */
+  .facet-row {
+    min-height: 44px;
+    padding: 0 10px;
+    gap: 12px;
+    font-size: 14px;
+  }
+
+  .facet-row input {
+    width: 18px;
+    height: 18px;
+  }
+
+  .facet-row .count {
+    font-size: 12px;
+  }
+
+  .columns-toolbar button {
+    height: 44px;
+    font-size: 13px;
+  }
+
+  .active-filters {
+    padding: 0 6px;
+  }
+
+  .active-filters .chip {
+    min-height: 44px;
+    border-width: 9px 3px;
+  }
+
+  .link-btn {
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .close-filters {
+    flex-shrink: 0;
+    justify-content: center;
+  }
+
+  .detection-popover .panel {
+    position: fixed;
+    top: 56px;
+    left: 8px;
+    right: 8px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .detection-popover .panel .encoding-row .select {
+    height: 44px;
+    font-size: 16px;
+  }
+}
+
+/* Phones: each row becomes a two-line card - meta on top, the message wrapped below. */
+@media (max-width: 640px) {
+  table.log,
+  table.log tbody {
+    display: block;
+  }
+
+  table.log thead {
     display: none;
+  }
+
+  table.log tbody tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px 8px;
+    padding: 8px 12px 9px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  table.log tbody td {
+    display: block;
+    padding: 0;
+    border: none;
+    width: auto;
+    max-width: 100%;
+  }
+
+  table.log tbody td.severity {
+    width: auto;
+  }
+
+  table.log tbody td.line-num {
+    width: auto;
+    font-size: 11px;
+    box-shadow: none !important;
+  }
+
+  table.log tbody tr.sev-warn {
+    box-shadow: inset 3px 0 0 var(--warn);
+  }
+
+  table.log tbody tr.sev-error,
+  table.log tbody tr.sev-fatal {
+    box-shadow: inset 3px 0 0 var(--error);
+  }
+
+  table.log tbody td.meta {
+    max-width: 45%;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  table.log tbody td.message,
+  table.log.has-flex tbody td.message {
+    width: auto;
+    max-width: 100%;
+    order: 10;
+    flex: 1 0 100%;
+    white-space: normal;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
   }
 }
 
 @media (min-width: 801px) {
   .mobile-only {
     display: none !important;
+  }
+
+  /* Desktop is a fixed-height workbench: the table scrolls on its own so the
+     docked inspector can sit beside it without covering anything. */
+  .app-shell {
+    height: 100dvh;
+  }
+
+  .main {
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .main.inspecting {
+    grid-template-columns: 280px minmax(0, 1fr) auto;
+  }
+
+  .row-sheet {
+    position: relative;
+    width: var(--inspector-width, 420px);
+    border-left: 1px solid var(--border);
+  }
+
+  .row-sheet:not(.open) {
+    display: none;
   }
 }

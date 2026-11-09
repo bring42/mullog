@@ -1,0 +1,9 @@
+2024-03-05 10:15:01,120 INFO [http] Server started on port 8080
+2024-03-05 10:15:02,331 ERROR [orders] Request failed for order 991
+java.lang.IllegalStateException: Order 991 has no lines
+    at com.example.orders.OrderService.submit(OrderService.java:42)
+    at com.example.orders.OrderController.post(OrderController.java:17)
+Caused by: java.lang.NullPointerException: lines is null
+    at com.example.orders.Order.lines(Order.java:88)
+    ... 2 more
+2024-03-05 10:15:03,004 INFO [http] GET /health 200

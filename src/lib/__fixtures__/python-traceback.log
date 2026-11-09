@@ -1,0 +1,17 @@
+2024-03-05 11:00:00 INFO [worker] Job 17 started
+2024-03-05 11:00:01 ERROR [worker] Job 17 crashed
+Traceback (most recent call last):
+  File "/app/worker.py", line 12, in run
+    result = handle(payload)
+  File "/app/handlers.py", line 40, in handle
+    return payload["id"]
+KeyError: 'id'
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/app/worker.py", line 14, in run
+    raise JobFailed(17)
+worker.JobFailedError: job 17
+
+2024-03-05 11:00:02 INFO [worker] Job 18 started

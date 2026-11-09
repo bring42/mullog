@@ -25,3 +25,6 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Test fixtures are real log files and must be committed
+!src/lib/__fixtures__/*.log

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
+  import { normaliseSeverity } from '$lib/parser';
   import type { FilterFacets, FilterState } from '$lib/types';
 
   export let filters: FilterState;
@@ -7,6 +8,7 @@
   export let tableColumns: string[] = [];
   export let visibleColumns: string[] = [];
   export let open = false;
+  export let severityColumn: string | undefined = undefined;
 
   const dispatch = createEventDispatcher<{ change: FilterState; columnsChange: string[]; close: void }>();
 
@@ -28,7 +30,7 @@
   }
 </script>
 
-<aside class="filters" class:open aria-label="Filters">
+<aside id="filters-rail" class="filters" class:open aria-label="Filters">
   <div class="filters-group">
     <div class="group-label">Search</div>
     <input
@@ -61,8 +63,33 @@
     </div>
   </div>
 
+
+  {#each facets.columns as column}
+    <details class="facet" open={column.column === severityColumn}>
+      <summary>
+        {column.column}
+        <span class="meta">{column.values.length}</span>
+      </summary>
+      <div class="facet-body">
+        {#each column.values as item}
+          {@const checked = (filters.columnFilters[column.column] ?? []).includes(item.value)}
+          <label class="facet-row" class:zero={item.count === 0 && !checked}>
+            <input type="checkbox" {checked} on:change={() => toggleColumnFilter(column.column, item.value)} />
+            {#if column.column === severityColumn}
+              <span class="sev-dot sev-{(normaliseSeverity(item.value) ?? 'other').toLowerCase()}" aria-hidden="true"></span>
+            {/if}
+            <span class="label" title={item.value}>{item.value}</span>
+            <span class="count" title="{item.count.toLocaleString()} with current filters, {item.total.toLocaleString()} in file">
+              {item.count.toLocaleString()}{#if item.count !== item.total}<span class="of"> / {item.total.toLocaleString()}</span>{/if}
+            </span>
+          </label>
+        {/each}
+      </div>
+    </details>
+  {/each}
+
   {#if tableColumns.length > 0}
-    <details class="facet" open>
+    <details class="facet">
       <summary>
         Columns
         <span class="meta">{visibleColumns.length}/{tableColumns.length}</span>
@@ -82,27 +109,5 @@
     </details>
   {/if}
 
-  {#each facets.columns as column}
-    <details class="facet">
-      <summary>
-        {column.column}
-        <span class="meta">{column.values.length}</span>
-      </summary>
-      <div class="facet-body">
-        {#each column.values as item}
-          <label class="facet-row">
-            <input
-              type="checkbox"
-              checked={(filters.columnFilters[column.column] ?? []).includes(item.value)}
-              on:change={() => toggleColumnFilter(column.column, item.value)}
-            />
-            <span class="label" title={item.value}>{item.value}</span>
-            <span class="count">{item.count}</span>
-          </label>
-        {/each}
-      </div>
-    </details>
-  {/each}
-
-  <button class="btn ghost mobile-only" on:click={() => dispatch('close')} style="margin-top: 8px;">Close filters</button>
+  <button class="btn close-filters mobile-only" type="button" on:click={() => dispatch('close')}>Close filters</button>
 </aside>
