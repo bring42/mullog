@@ -2,18 +2,20 @@
 
 Try it out: https://log.n527.eu
 
-A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filtering, and exporting local `.txt`, `.log`, and `.csv` files. All processing happens in the browser. There is no backend and no file upload to a server.
+A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filtering, and exporting local log files (`.log`, `.txt`), CSV/TSV, Excel and OpenDocument spreadsheets (`.xlsx`, `.xls`, `.ods`), and JSON / JSON Lines (`.json`, `.jsonl`, `.ndjson`). All processing happens in the browser. There is no backend and no file upload to a server.
 
 ## Features
 
-- Local drag/drop or file picker input for `.txt`, `.log`, and `.csv` files
+- Local drag/drop or file picker input for `.log`, `.txt`, `.csv`, `.tsv`, `.xlsx`, `.xls`, `.ods`, `.json`, `.jsonl` and `.ndjson` files
+- Spreadsheets: every sheet is read, with a sheet picker for multi-sheet workbooks. Row numbers match the spreadsheet's, and date cells become `YYYY-MM-DD HH:MM:SS`. Formulas are not evaluated; their saved results are shown. The reader ([SheetJS](https://sheetjs.com) 0.20.3, from the SheetJS CDN rather than the outdated npm copy) is only downloaded when a spreadsheet is opened.
+- JSON Lines and JSON arrays (also detected by content, e.g. JSON logs saved as `.log`): nested objects become dotted columns (`http.status`), pino/bunyan numeric levels (30 = INFO, 50 = ERROR) and Unix-time timestamps are understood, and `msg`/`message`, `level`/`log.level`/`severity` and `time`/`@timestamp` are picked up automatically
 - Browser-side decoding via `TextDecoder`
 - Encoding detection and manual override for:
   - UTF-8
   - UTF-8 with BOM
   - Windows-1252
   - ISO-8859-1
-- Auto detection for CSV vs plain text logs
+- Auto detection for CSV vs JSON vs plain text logs
 - CSV delimiter detection for comma, semicolon, tab, and pipe
 - Header detection, robust quoted CSV parsing, malformed-row warnings
 - TXT parsing for line number, raw line, timestamp, severity, category/source, and message
@@ -37,7 +39,7 @@ mullog can be installed as an app and receive files from the system share sheet 
 ### Android (Chrome)
 
 1. Open https://log.n527.eu in Chrome and choose **⋮ → Install app** (or accept the install prompt). The installed app opens in its own window, without the Chrome address bar.
-2. In any app (Files, Gmail, Termux, …) share a `.log`, `.txt`, `.csv` or `.tsv` file and pick **mullog**. It opens straight away.
+2. In any app (Files, Gmail, Termux, …) share a log, CSV, Excel or JSON file and pick **mullog**. It opens straight away.
 
 mullog only appears in the share sheet after a real install. A shortcut-style **Add to home screen** (an icon that opens a Chrome tab) is not enough. If you made one of those before mullog was installable, remove it from the home screen, reload the site once, then use **Install app**. If Chrome only offers "Add to home screen", reload the page and wait a few seconds so the service worker can register, then open the menu again.
 
@@ -93,6 +95,7 @@ src/lib/components/LogTable.svelte
 src/lib/components/RowInspector.svelte
 src/lib/components/ExportButton.svelte
 src/lib/parser.ts
+src/lib/spreadsheet.ts
 src/lib/encoding.ts
 src/lib/filters.ts
 src/lib/demo.ts
@@ -102,6 +105,6 @@ src/app.css
 
 ## Notes
 
-- No heavy runtime dependencies are used.
+- The only runtime dependency is SheetJS, loaded on demand for spreadsheets.
 - CSV parsing is implemented locally instead of pulling in PapaParse.
 - The app uses SvelteKit's static adapter and disables SSR for the route so browser-only file APIs stay client-side.

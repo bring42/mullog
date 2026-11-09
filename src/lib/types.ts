@@ -1,6 +1,7 @@
 export type EncodingName = 'utf-8' | 'windows-1252' | 'iso-8859-1';
 export type ParserMode = 'auto' | 'csv' | 'txt';
-export type DetectedType = 'csv' | 'txt' | 'unknown';
+export type SpreadsheetType = 'xlsx' | 'xls' | 'ods';
+export type DetectedType = 'csv' | 'txt' | 'json' | 'jsonl' | SpreadsheetType | 'unknown';
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 export type WarningLevel = 'error' | 'warning' | 'info';
 
@@ -47,6 +48,9 @@ export interface DetectionState {
   delimiter?: string;
   delimiterConfidence?: number;
   hasHeader?: boolean;
+  /** Workbook sheet currently shown, and all sheet names (spreadsheets only). */
+  sheetName?: string;
+  sheetNames?: string[];
   schema: ColumnMeta[];
   timestampFormat?: string;
   timestampConfidence?: number;

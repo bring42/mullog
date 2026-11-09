@@ -98,6 +98,11 @@
         {/if}
         <dt>Type</dt>
         <dd>{detection.detectedType.toUpperCase()}</dd>
+        {#if detection.sheetName}
+          <dt>Sheet</dt>
+          <dd>{detection.sheetName}{#if detection.sheetNames && detection.sheetNames.length > 1} ({detection.sheetNames.length} in workbook){/if}</dd>
+        {/if}
+        {#if encodings.length > 0}
         <dt><label for="{panelId}-encoding">Encoding</label></dt>
         <dd class="encoding-row">
           <select
@@ -112,6 +117,7 @@
           </select>
           <span class="confidence">{pct(detection.encodingConfidence)} sure</span>
         </dd>
+        {/if}
         {#if detection.delimiter}
           <dt>Delimiter</dt>
           <dd>{detection.delimiter} ({pct(detection.delimiterConfidence)})</dd>
