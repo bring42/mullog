@@ -9,11 +9,15 @@ import type {
   ParseWarning,
   ParserMode,
   Severity,
-  SpreadsheetType
+  SpreadsheetType,
+  ImportSettings,
+  TextLayout
 } from './types';
 import { stripUtf8Bom } from './encoding';
+import { ACCESS_LINE, analyseSheetRows, analyseText, isCommentLine, logfmtPairs, SYSLOG_3164, SYSLOG_5424 } from './layout';
 
 const DELIMITERS = [',', ';', '\t', '|'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TIMESTAMP_PATTERNS: Array<{ name: string; pattern: RegExp; normalise: (value: string) => string }> = [
   {
     name: 'ISO-8601 or ISO-like datetime',
@@ -31,6 +35,17 @@ const TIMESTAMP_PATTERNS: Array<{ name: string; pattern: RegExp; normalise: (val
     normalise: (value) => {
       const match = /^(\d{2})\.(\d{2})\.(\d{4})(.*)$/.exec(value);
       return match ? `${match[3]}-${match[2]}-${match[1]}${match[4].replace(' ', 'T').replace(',', '.')}` : value;
+    }
+  },
+  {
+    // Apache/Nginx access logs: 10/Oct/2000:13:55:36 -0700
+    name: 'Common Log Format time',
+    pattern: /\b\d{2}\/[A-Z][a-z]{2}\/\d{4}:\d{2}:\d{2}:\d{2}(?: [+-]\d{4})?/,
+    normalise: (value) => {
+      const match = /^(\d{2})\/([A-Z][a-z]{2})\/(\d{4}):(\d{2}:\d{2}:\d{2})(?: ([+-]\d{2})(\d{2}))?$/.exec(value);
+      const month = match ? MONTHS.indexOf(match[2]) + 1 : 0;
+      if (!match || month === 0) return value;
+      return `${match[3]}-${String(month).padStart(2, '0')}-${match[1]}T${match[4]}${match[5] ? `${match[5]}:${match[6]}` : ''}`;
     }
   },
   {
@@ -62,60 +77,91 @@ export interface ParseOptions {
   encodingNotes: string[];
   encodingWarnings?: ParseWarning[];
   parserMode: ParserMode;
+  /** How to read the file. Left out, the layout is detected (see `analyseText`). */
+  settings?: ImportSettings;
 }
 
 export function parseLogText(input: string, options: ParseOptions): ParseResult {
   const text = stripUtf8Bom(input);
+  const settings = options.settings ?? analyseText(text, { fileName: options.fileName, parserMode: options.parserMode }).suggested;
+  const kept = keepLines(text, settings);
   const warnings = [...(options.encodingWarnings ?? [])];
-  const detectedType = detectFileType(text, options.fileName, options.parserMode);
-
-  if (detectedType === 'csv') {
-    return parseCsv(text, options, warnings);
-  }
-
-  if (detectedType === 'json' || detectedType === 'jsonl') {
-    const json = parseJson(text, detectedType, options, warnings);
-    if (json) return json;
-    warnings.push({
-      id: 'json-fallback',
-      type: 'assumption',
-      level: 'warning',
-      message: 'The file looked like JSON but could not be read as JSON objects, so it is shown as plain text.'
-    });
-  }
-
-  return parseTxt(text, options, warnings, detectedType === 'unknown' ? 'unknown' : 'txt');
+  const result = parseLayout(kept.text, settings, options, warnings);
+  return finishResult(result, settings, kept.isRemoved, kept.removedCount);
 }
 
-function detectFileType(text: string, fileName: string, parserMode: ParserMode): DetectedType {
-  if (parserMode === 'csv') return 'csv';
-  if (parserMode === 'txt') return 'txt';
-
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.jsonl') || lower.endsWith('.ndjson')) return 'jsonl';
-  if (lower.endsWith('.json')) return sniffJson(text) ?? 'json';
-  if (lower.endsWith('.csv')) return 'csv';
-
-  // Structured JSON logs are often saved as .log/.txt, or pasted.
-  const sniffed = sniffJson(text);
-  if (sniffed) return sniffed;
-
-  if (lower.endsWith('.txt') || lower.endsWith('.log')) {
-    const delimiter = detectDelimiter(text);
-    if (delimiter.confidence > 0.82) return 'csv';
-    return 'txt';
+function parseLayout(text: string, settings: ImportSettings, options: ParseOptions, warnings: ParseWarning[]): ParseResult {
+  switch (settings.layout) {
+    case 'delimited':
+      return parseCsv(text, options, warnings, settings);
+    case 'json':
+    case 'jsonl': {
+      const json = parseJson(text, settings.layout, options, warnings);
+      if (json) return json;
+      warnings.push({
+        id: 'json-fallback',
+        type: 'assumption',
+        level: 'warning',
+        message: 'The file looked like JSON but could not be read as JSON objects, so it is shown as plain text.'
+      });
+      return parseTxt(text, options, warnings, 'txt');
+    }
+    case 'logfmt':
+      return parseLogfmt(text, options, warnings);
+    case 'access':
+      return parseAccessLog(text, options, warnings);
+    case 'w3c':
+      return parseW3c(text, options, warnings);
+    case 'syslog':
+      return parseSyslog(text, options, warnings);
+    default:
+      return parseTxt(text, options, warnings, 'txt');
   }
-
-  const delimiter = detectDelimiter(text);
-  return delimiter.confidence > 0.72 ? 'csv' : 'txt';
 }
 
-function parseCsv(text: string, options: ParseOptions, inheritedWarnings: ParseWarning[]): ParseResult {
-  const delimiterInfo = detectDelimiter(text);
+/**
+ * Blanks out the lines the settings leave out, so every parser still counts lines from the top
+ * of the original file. Rows and warnings on those lines are dropped afterwards.
+ */
+function keepLines(text: string, settings: ImportSettings): { text: string; isRemoved: (line: number) => boolean; removedCount: number } {
+  if (settings.skipStart <= 0 && settings.skipEnd <= 0 && !settings.ignoreComments) {
+    return { text, isRemoved: () => false, removedCount: 0 };
+  }
+  const lines = splitLines(text);
+  const total = lines.length > 1 && lines[lines.length - 1] === '' ? lines.length - 1 : lines.length;
+  const lastKept = total - Math.max(0, settings.skipEnd);
+  const removed = new Set<number>();
+  for (let index = 0; index < total; index += 1) {
+    const line = index + 1;
+    if (line <= settings.skipStart || line > lastKept || (settings.ignoreComments && settings.layout !== 'w3c' && isCommentLine(lines[index]))) {
+      removed.add(line);
+      lines[index] = '';
+    }
+  }
+  return { text: lines.join('\n'), isRemoved: (line) => removed.has(line), removedCount: removed.size };
+}
+
+function finishResult(result: ParseResult, settings: ImportSettings, isRemoved: (line: number) => boolean, removedCount: number): ParseResult {
+  if (removedCount > 0) {
+    // A blanked line in the middle of a stack trace is folded into its entry; only drop rows that start on one.
+    result.rows = result.rows.filter((row) => !(isRemoved(row.lineNumber) && row.rawLine.trim() === ''));
+    result.detection.warnings = result.detection.warnings.filter(
+      (warning) => warning.lineNumber === undefined || !isRemoved(warning.lineNumber) || warning.type !== 'empty-line'
+    );
+    result.detection.rowCount = result.rows.length;
+  }
+  result.detection.settings = settings;
+  result.detection.skippedLines = removedCount;
+  return result;
+}
+
+function parseCsv(text: string, options: ParseOptions, inheritedWarnings: ParseWarning[], settings?: ImportSettings): ParseResult {
+  const detected = detectDelimiter(text);
+  const delimiterInfo = settings?.delimiter && settings.delimiter !== detected.delimiter ? { delimiter: settings.delimiter, confidence: 1 } : detected;
   const delimiter = delimiterInfo.delimiter;
   const parsed = parseCsvRecords(text, delimiter);
   const warnings = [...inheritedWarnings, ...parsed.warnings];
-  const headerInfo = detectHeader(parsed.records);
+  const headerInfo = settings?.hasHeader !== undefined ? { hasHeader: settings.hasHeader, confidence: 1 } : detectHeader(parsed.records);
   const headers = headerInfo.hasHeader
     ? parsed.records[0]?.fields.map((field, index) => sanitiseHeader(field, index)) ?? []
     : Array.from({ length: maxFieldCount(parsed.records) }, (_, index) => `column_${index + 1}`);
@@ -147,19 +193,26 @@ export function parseSpreadsheet(
   options: ParseOptions
 ): ParseResult {
   const warnings = [...(options.encodingWarnings ?? [])];
-  const width = Math.max(1, ...sheet.rows.map((row) => row.length));
-  const records: CsvRecord[] = sheet.rows.map((cells, index) => {
+  const allNumbers = sheet.rows.map((_, index) => sheet.rowNumbers?.[index] ?? index + 1);
+  const settings = options.settings ?? analyseSheetRows(sheet.rows, allNumbers).suggested;
+  const lastRow = allNumbers[allNumbers.length - 1] ?? 0;
+  const keep = (rowNumber: number) => rowNumber > settings.skipStart && rowNumber <= lastRow - settings.skipEnd;
+  const keptRows = sheet.rows.filter((_, index) => keep(allNumbers[index]));
+  const keptNumbers = allNumbers.filter(keep);
+  // Width from the kept rows only, so a wide title block doesn't add empty columns.
+  const width = Math.max(1, ...keptRows.map((row) => trimTrailingEmpty(row).length));
+  const records: CsvRecord[] = keptRows.map((cells, index) => {
     const fields = Array.from({ length: width }, (_, column) => cells[column] ?? '');
-    const rowNumber = sheet.rowNumbers?.[index] ?? index + 1;
+    const rowNumber = keptNumbers[index];
     return { fields, startLine: rowNumber, endLine: rowNumber, raw: trimTrailingEmpty(fields).join('\t'), notes: [] };
   });
-  const headerInfo = detectHeader(records);
+  const headerInfo = settings.hasHeader !== undefined ? { hasHeader: settings.hasHeader, confidence: 1 } : detectHeader(records);
   const headers = headerInfo.hasHeader
     ? uniqueHeaders(records[0]?.fields.map((field, index) => sanitiseHeader(field, index)) ?? [])
     : Array.from({ length: width }, (_, index) => spreadsheetColumnName(index));
   const dataRecords = headerInfo.hasHeader ? records.slice(1) : records;
 
-  return buildTable(headers, dataRecords, options, warnings, {
+  const result = buildTable(headers, dataRecords, options, warnings, {
     detectedType: format,
     rowLabel: 'Sheet row',
     hasHeader: headerInfo.hasHeader,
@@ -167,6 +220,7 @@ export function parseSpreadsheet(
     sheetName: sheet.name,
     sheetNames
   });
+  return finishResult(result, { ...settings, layout: 'delimited' }, () => false, sheet.rows.length - keptRows.length);
 }
 
 interface TableMeta {
@@ -319,7 +373,7 @@ function sniffJson(text: string): 'json' | 'jsonl' | undefined {
   return isJsonDocument(trimmed) ? 'json' : undefined;
 }
 
-function isJsonObject(line: string): boolean {
+export function isJsonObject(line: string): boolean {
   try {
     const value = JSON.parse(line);
     return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -644,6 +698,231 @@ function parseTxt(text: string, options: ParseOptions, inheritedWarnings: ParseW
   return { detection, rows };
 }
 
+// ── Structured line formats ──────────────────────────────────────────────────
+
+interface LineRecord {
+  fields: string[];
+  line: number;
+  raw: string;
+  malformed?: boolean;
+  note?: string;
+}
+
+/** Lines of a text, with 1-based line numbers, skipping blank ones. */
+function numberedLines(text: string): Array<{ line: number; raw: string }> {
+  return splitLines(text)
+    .map((raw, index) => ({ line: index + 1, raw }))
+    .filter((entry) => entry.raw.trim() !== '');
+}
+
+/** Shared tail of the line-format parsers: drop always-empty columns, then infer roles. */
+function lineTable(
+  headers: string[],
+  lineRecords: LineRecord[],
+  options: ParseOptions,
+  warnings: ParseWarning[],
+  detectedType: DetectedType,
+  rowLabel: string,
+  numericLevels = false
+): ParseResult {
+  const used = headers.map((_, column) => lineRecords.some((record) => (record.fields[column] ?? '') !== ''));
+  const keptHeaders = headers.filter((_, column) => used[column]);
+  const records: CsvRecord[] = lineRecords.map((record) => ({
+    fields: record.fields.filter((_, column) => used[column]),
+    startLine: record.line,
+    endLine: record.line,
+    raw: record.raw,
+    malformed: record.malformed,
+    notes: record.note ? [record.note] : []
+  }));
+  lineRecords
+    .filter((record) => record.malformed)
+    .slice(0, 500)
+    .forEach((record) =>
+      warnings.push({
+        id: `${detectedType}-line-${record.line}`,
+        type: 'malformed-row',
+        level: 'warning',
+        lineNumber: record.line,
+        message: `Line doesn't match the ${rowLabel} format; kept as a raw row.`
+      })
+    );
+  const result = buildTable(keptHeaders.length ? keptHeaders : ['message'], records, options, warnings, {
+    detectedType,
+    rowLabel,
+    hasHeader: true,
+    headerConfidence: 1,
+    numericLevels
+  });
+  // Unmatched lines still need something to show: put the raw text in the message column.
+  const message = result.detection.schema.find((column) => column.role === 'message')?.name ?? keptHeaders[keptHeaders.length - 1];
+  result.rows.forEach((row) => {
+    if (row.malformed && message) row.fields[message] = row.rawLine;
+  });
+  return result;
+}
+
+function unmatched(line: number, raw: string, width: number): LineRecord {
+  return { fields: Array.from({ length: width }, () => ''), line, raw, malformed: true };
+}
+
+/** HTTP status → level, so access logs can be filtered like other logs. */
+function statusLevel(status: string): Severity | '' {
+  if (!/^\d{3}$/.test(status)) return '';
+  if (status >= '500') return 'ERROR';
+  if (status >= '400') return 'WARN';
+  return 'INFO';
+}
+
+function parseLogfmt(text: string, options: ParseOptions, warnings: ParseWarning[]): ParseResult {
+  const headers: string[] = [];
+  const seen = new Set<string>();
+  let capped = false;
+  const parsed = numberedLines(text).map(({ line, raw }) => {
+    const pairs = logfmtPairs(raw);
+    if (pairs) {
+      for (const [key] of pairs) {
+        if (seen.has(key)) continue;
+        if (headers.length >= MAX_JSON_COLUMNS) {
+          capped = true;
+          continue;
+        }
+        seen.add(key);
+        headers.push(key);
+      }
+    }
+    return { line, raw, pairs };
+  });
+  if (capped) {
+    warnings.push({
+      id: 'logfmt-columns-capped',
+      type: 'assumption',
+      level: 'info',
+      message: `Only the first ${MAX_JSON_COLUMNS} keys are shown as columns; every key is still in the raw text.`
+    });
+  }
+  const records = parsed.map(({ line, raw, pairs }): LineRecord => {
+    if (!pairs) return unmatched(line, raw, headers.length);
+    const values = new Map(pairs);
+    return { fields: headers.map((header) => values.get(header) ?? ''), line, raw };
+  });
+  return lineTable(headers, records, options, warnings, 'logfmt', 'key=value');
+}
+
+const ACCESS_HEADERS = ['client', 'ident', 'user', 'time', 'method', 'path', 'protocol', 'status', 'level', 'bytes', 'referer', 'user_agent', 'extra'];
+
+function parseAccessLog(text: string, options: ParseOptions, warnings: ParseWarning[]): ParseResult {
+  const unquote = (value: string | undefined) => (value ?? '').replace(/\\(["\\])/g, '$1');
+  const dash = (value: string | undefined) => (value === '-' ? '' : (value ?? ''));
+  const records = numberedLines(text).map(({ line, raw }): LineRecord => {
+    const match = ACCESS_LINE.exec(raw);
+    if (!match) return unmatched(line, raw, ACCESS_HEADERS.length);
+    const request = unquote(match[5]);
+    const [method = '', path = '', protocol = ''] = /^([A-Z]+) (\S+)(?: (\S+))?$/.test(request) ? request.split(' ') : ['', request, ''];
+    const status = dash(match[6]);
+    return {
+      fields: [
+        dash(match[1]),
+        dash(match[2]),
+        dash(match[3]),
+        match[4],
+        method,
+        path,
+        protocol,
+        status,
+        statusLevel(status),
+        dash(match[7]),
+        dash(unquote(match[8])),
+        dash(unquote(match[9])),
+        (match[10] ?? '').trim()
+      ],
+      line,
+      raw,
+      note: status ? `Level derived from HTTP status ${status}.` : undefined
+    };
+  });
+  return lineTable(ACCESS_HEADERS, records, options, warnings, 'access', 'access log');
+}
+
+/** W3C extended log (IIS and others): #Fields names the space-separated columns, and can change mid-file. */
+function parseW3c(text: string, options: ParseOptions, warnings: ParseWarning[]): ParseResult {
+  const headers: string[] = [];
+  const index = new Map<string, number>();
+  const addHeader = (name: string) => {
+    if (!index.has(name)) {
+      index.set(name, headers.length);
+      headers.push(name);
+    }
+  };
+  let fields: string[] = [];
+  const pending: Array<{ line: number; raw: string; values: Map<string, string> | undefined }> = [];
+  for (const { line, raw } of numberedLines(text)) {
+    if (raw.startsWith('#')) {
+      const directive = /^#Fields:\s*(.*)$/.exec(raw);
+      if (directive) {
+        fields = directive[1].trim().split(/\s+/);
+        if (fields.includes('date') && fields.includes('time')) addHeader('timestamp');
+        fields.forEach(addHeader);
+        if (fields.some((name) => /(^|-)status$/.test(name))) addHeader('level');
+      }
+      continue;
+    }
+    const cells = raw.trim().split(/\s+/);
+    if (fields.length === 0 || cells.length !== fields.length) {
+      pending.push({ line, raw, values: undefined });
+      continue;
+    }
+    const values = new Map<string, string>();
+    fields.forEach((name, column) => values.set(name, cells[column] === '-' ? '' : cells[column]));
+    if (values.has('date') && values.has('time')) values.set('timestamp', `${values.get('date')}T${values.get('time')}Z`);
+    const status = values.get('sc-status') ?? values.get('status');
+    if (status !== undefined) values.set('level', statusLevel(status));
+    pending.push({ line, raw, values });
+  }
+  const records = pending.map(({ line, raw, values }): LineRecord =>
+    values ? { fields: headers.map((header) => values.get(header) ?? ''), line, raw } : unmatched(line, raw, headers.length)
+  );
+  return lineTable(headers, records, options, warnings, 'w3c', 'W3C log');
+}
+
+const SYSLOG_HEADERS = ['timestamp', 'host', 'app', 'pid', 'msgid', 'facility', 'level', 'message', 'structured_data'];
+const SYSLOG_FACILITIES = [
+  'kern', 'user', 'mail', 'daemon', 'auth', 'syslog', 'lpr', 'news', 'uucp', 'cron', 'authpriv', 'ftp', 'ntp', 'audit', 'alert', 'clock',
+  'local0', 'local1', 'local2', 'local3', 'local4', 'local5', 'local6', 'local7'
+];
+const SYSLOG_SEVERITIES: Severity[] = ['FATAL', 'FATAL', 'FATAL', 'ERROR', 'WARN', 'INFO', 'INFO', 'DEBUG'];
+
+function parseSyslog(text: string, options: ParseOptions, warnings: ParseWarning[]): ParseResult {
+  const dash = (value: string | undefined) => (value === '-' || value === undefined ? '' : value);
+  const priority = (value: string | undefined): { facility: string; level: string; note?: string } => {
+    if (value === undefined) return { facility: '', level: '' };
+    const pri = Number(value);
+    const level = SYSLOG_SEVERITIES[pri % 8] ?? '';
+    return { facility: SYSLOG_FACILITIES[Math.floor(pri / 8)] ?? '', level, note: `Priority <${value}> read as ${level}.` };
+  };
+  const records = numberedLines(text).map(({ line, raw }): LineRecord => {
+    const modern = SYSLOG_5424.exec(raw);
+    if (modern) {
+      const pri = priority(modern[1]);
+      return {
+        fields: [modern[2], dash(modern[3]), dash(modern[4]), dash(modern[5]), dash(modern[6]), pri.facility, pri.level, (modern[8] ?? '').replace(/^\uFEFF/, ''), dash(modern[7])],
+        line,
+        raw,
+        note: pri.note
+      };
+    }
+    const classic = SYSLOG_3164.exec(raw);
+    if (classic) {
+      const pri = priority(classic[1]);
+      const message = classic[6];
+      const level = pri.level || detectSeverity(message)?.value || '';
+      return { fields: [classic[2], classic[3], classic[4], classic[5] ?? '', '', pri.facility, level, message, ''], line, raw, note: pri.note };
+    }
+    return unmatched(line, raw, SYSLOG_HEADERS.length);
+  });
+  return lineTable(SYSLOG_HEADERS, records, options, warnings, 'syslog', 'syslog');
+}
+
 interface LineGroup {
   /** Zero-based index of the first line. */
   start: number;
@@ -845,7 +1124,7 @@ function parseCsvRecords(text: string, delimiter: string): CsvParseInternal {
   return { records: records.filter((record) => !(record.fields.length === 1 && record.fields[0] === '' && record.raw === '')), warnings };
 }
 
-function parseSingleCsvLine(line: string, delimiter: string): string[] {
+export function parseSingleCsvLine(line: string, delimiter: string): string[] {
   const result: string[] = [];
   let field = '';
   let inQuotes = false;
@@ -997,7 +1276,7 @@ function pickBestCategoryColumn(schema: ColumnMeta[], names: string[]): ColumnMe
   return pickRoleColumn(schema, names) ?? schema.find((column) => column.isCategorical && column.uniqueCount <= 30);
 }
 
-function findTimestamp(line: string): { raw: string; iso: string; ms: number; format: string } | undefined {
+export function findTimestamp(line: string): { raw: string; iso: string; ms: number; format: string } | undefined {
   for (const candidate of TIMESTAMP_PATTERNS) {
     const match = candidate.pattern.exec(line);
     if (!match?.[0]) continue;
@@ -1178,7 +1457,7 @@ function sanitiseHeader(value: string, index: number): string {
   return cleaned || `column_${index + 1}`;
 }
 
-function splitLines(text: string): string[] {
+export function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
 }
 

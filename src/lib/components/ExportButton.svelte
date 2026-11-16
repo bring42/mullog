@@ -1,11 +1,17 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { LogRow } from '$lib/types';
-  import { downloadBlob, downloadCsv, rowsToTable } from '$lib/filters';
+  import { downloadBlob } from '$lib/filters';
+  import { buildExport, EXPORT_FORMATS, type ExportFormat } from '$lib/exporters';
 
   export let rows: LogRow[] = [];
   /** File name without extension. */
   export let fileName = 'filtered-log-export';
+
+  const groups = [...new Set(EXPORT_FORMATS.map((format) => format.group))].map((group) => ({
+    group,
+    formats: EXPORT_FORMATS.filter((format) => format.group === group)
+  }));
 
   let open = false;
   let busy = false;
@@ -34,37 +40,21 @@
     if (restoreFocus) trigger?.focus();
   }
 
-  function exportCsv() {
-    closeMenu(true);
-    message = '';
-    if (rows.length === 0) return;
-    downloadCsv(rows, `${fileName}.csv`);
-  }
-
-  async function exportExcel() {
+  async function exportAs(format: ExportFormat) {
     closeMenu(true);
     if (rows.length === 0 || busy) return;
     busy = true;
     message = '';
     try {
-      const { tableToXlsx } = await import('$lib/spreadsheet');
-      const result = await tableToXlsx(rowsToTable(rows));
-      downloadBlob(
-        new Blob([result.bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-        `${fileName}.xlsx`
-      );
-      const notes: string[] = [];
-      if (result.sheetCount > 1) notes.push(`split across ${result.sheetCount} sheets (Excel row limit)`);
-      if (result.truncatedCells > 0) {
-        notes.push(`${result.truncatedCells.toLocaleString()} long cell${result.truncatedCells === 1 ? '' : 's'} cut to Excel's 32,767-character limit; use CSV for full text`);
-      }
-      if (notes.length) {
+      const result = await buildExport(format.id, rows);
+      downloadBlob(result.blob, `${fileName}.${format.extension}`);
+      if (result.notes.length) {
         messageKind = 'info';
-        message = `Exported, ${notes.join('; ')}.`;
+        message = `Exported, ${result.notes.join('; ')}.`;
       }
     } catch (error) {
       messageKind = 'error';
-      message = error instanceof Error && error.message.startsWith('Excel supports') ? error.message : 'Excel export failed.';
+      message = error instanceof Error && error.message.startsWith('Excel supports') ? error.message : `${format.label} export failed.`;
     } finally {
       busy = false;
     }
@@ -104,7 +94,6 @@
   function onWindowPointerDown(event: PointerEvent) {
     if (open && root && !root.contains(event.target as Node)) closeMenu();
   }
-
 </script>
 
 <svelte:window on:pointerdown={onWindowPointerDown} />
@@ -128,8 +117,18 @@
   {#if open}
     <!-- svelte-ignore a11y-interactive-supports-focus -->
     <div id="export-menu" class="menu" role="menu" aria-label="Export format" bind:this={menu} on:keydown={onMenuKeydown}>
-      <button type="button" role="menuitem" tabindex="-1" on:click={exportCsv}>CSV (.csv)</button>
-      <button type="button" role="menuitem" tabindex="-1" on:click={exportExcel}>Excel (.xlsx)</button>
+      {#each groups as { group, formats }, groupIndex}
+        <div class="group" role="group" aria-label={group}>
+          {#if groupIndex > 0}<div class="sep" role="separator"></div>{/if}
+          <div class="group-label" aria-hidden="true">{group}</div>
+          {#each formats as format}
+            <button type="button" role="menuitem" tabindex="-1" on:click={() => exportAs(format)}>
+              <span class="item-label">{format.label} <span class="ext">.{format.extension}</span></span>
+              <span class="item-hint">{format.hint}</span>
+            </button>
+          {/each}
+        </div>
+      {/each}
     </div>
   {/if}
   {#if message}
@@ -150,7 +149,9 @@
     right: 0;
     top: calc(100% + 4px);
     z-index: 20;
-    min-width: 150px;
+    min-width: 240px;
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     padding: 4px;
@@ -160,9 +161,38 @@
     border-radius: 8px;
     box-shadow: var(--shadow-2);
   }
+  .group {
+    display: flex;
+    flex-direction: column;
+  }
+  .sep {
+    height: 1px;
+    margin: 4px 0;
+    background: var(--border);
+  }
+  .group-label {
+    padding: 6px 12px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .item-label {
+    display: block;
+  }
+  .ext {
+    color: var(--text-faint);
+    font-size: 12px;
+  }
+  .item-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
   .menu button {
     text-align: left;
-    padding: 10px 12px;
+    padding: 6px 12px;
     min-height: 44px;
     background: none;
     border: 0;

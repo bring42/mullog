@@ -1,7 +1,56 @@
 export type EncodingName = 'utf-8' | 'windows-1252' | 'iso-8859-1';
 export type ParserMode = 'auto' | 'csv' | 'txt';
 export type SpreadsheetType = 'xlsx' | 'xls' | 'ods';
-export type DetectedType = 'csv' | 'txt' | 'json' | 'jsonl' | SpreadsheetType | 'unknown';
+export type DetectedType = 'csv' | 'txt' | 'json' | 'jsonl' | 'logfmt' | 'access' | 'w3c' | 'syslog' | SpreadsheetType | 'unknown';
+
+/** How the lines of a text file are read. */
+export type TextLayout = 'freeform' | 'delimited' | 'json' | 'jsonl' | 'logfmt' | 'access' | 'w3c' | 'syslog';
+
+/**
+ * What to read and how: the user can adjust these in the import setup. Line numbers are 1-based
+ * and refer to the original file (spreadsheet row numbers for workbooks).
+ */
+export interface ImportSettings {
+  layout: TextLayout;
+  /** Lines at the top to ignore (title, banner, report header…). */
+  skipStart: number;
+  /** Lines at the bottom to ignore (totals, footers…). */
+  skipEnd: number;
+  /** Drop lines starting with # or // (text files only). */
+  ignoreComments: boolean;
+  /** Delimited layout only. */
+  delimiter?: string;
+  /** Delimited layout and spreadsheets: whether the first kept line holds column names. Undefined = detect. */
+  hasHeader?: boolean;
+}
+
+export interface LayoutCandidate {
+  layout: TextLayout;
+  label: string;
+  /** 0–1: how well the sampled body lines fit this layout. */
+  confidence: number;
+  delimiter?: string;
+  /** Why this layout was or wasn't a good fit, in plain words. */
+  reason: string;
+}
+
+/** A line (or sheet row) of the file as shown in the import setup's line picker. */
+export interface PreviewLine {
+  number: number;
+  text: string;
+}
+
+export interface LayoutAnalysis {
+  totalLines: number;
+  candidates: LayoutCandidate[];
+  suggested: ImportSettings;
+  /** True when the user should look at the setup: junk lines found, or no clear winner. */
+  unclear: boolean;
+  /** Why the setup is worth a look. */
+  reasons: string[];
+  /** A typical body line (1-based), used to compare layouts on real data. */
+  sampleLine?: number;
+}
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 export type WarningLevel = 'error' | 'warning' | 'info';
 
@@ -58,6 +107,10 @@ export interface DetectionState {
   rowCount: number;
   warnings: ParseWarning[];
   assumptions: DetectionAssumption[];
+  /** The import settings this result was parsed with. */
+  settings?: ImportSettings;
+  /** Lines/rows left out by those settings. */
+  skippedLines?: number;
 }
 
 export interface LogRow {

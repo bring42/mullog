@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  export type IconName = 'filter' | 'close' | 'warning' | 'more' | 'arrow-up' | 'arrow-down';
+  export type IconName = 'filter' | 'close' | 'warning' | 'more' | 'arrow-up' | 'arrow-down' | 'sliders';
 </script>
 
 <script lang="ts">
@@ -43,5 +43,9 @@
     <path d="M12 19V5M6 11l6-6 6 6" />
   {:else if name === 'arrow-down'}
     <path d="M12 5v14M6 13l6 6 6-6" />
+  {:else if name === 'sliders'}
+    <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />
+    <circle cx="16" cy="7" r="2" />
+    <circle cx="10" cy="17" r="2" />
   {/if}
 </svg>
