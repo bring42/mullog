@@ -684,10 +684,11 @@ function groupContinuationLines(lines: string[]): LineGroup[] {
   let inPythonTraceback = false;
 
   const continues = (line: string, head: string): boolean => {
-    if (line.trim() === '' || findTimestamp(line)) return false;
-    if (isStackTraceLine(line)) return true;
-    if (inPythonTraceback && PY_EXCEPTION_LINE.test(line)) return true;
-    return leadingWhitespace(line) > leadingWhitespace(head);
+    if (line.trim() === '') return false;
+    const shaped =
+      isStackTraceLine(line) || (inPythonTraceback && PY_EXCEPTION_LINE.test(line)) || leadingWhitespace(line) > leadingWhitespace(head);
+    // The timestamp check is the expensive one, so it only runs for lines that would otherwise continue.
+    return shaped && !matchTimestamp(line);
   };
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -891,10 +892,11 @@ function inferSchema(headers: string[], records: CsvRecord[]): ColumnMeta[] {
   return headers.map((name, index) => {
     const values = records.map((record) => record.fields[index] ?? '');
     const nonEmpty = values.filter((value) => value.trim() !== '');
-    const unique = sortedUnique(nonEmpty).slice(0, 8);
+    const distinct = new Set(nonEmpty);
+    const unique = smallestSortedUnique(distinct, 8);
     const types = nonEmpty.map(inferValueType);
     const inferredType = inferColumnType(types, nonEmpty.length);
-    const uniqueCount = new Set(nonEmpty).size;
+    const uniqueCount = distinct.size;
     const emptyCount = values.length - nonEmpty.length;
     const lowerName = name.toLowerCase();
     const isIdentifierLike = /id|uuid|guid|hash|message|raw|description|detail|händelse|kommentar|nr#?$/.test(lowerName);
@@ -922,7 +924,7 @@ function inferValueType(value: string): ColumnMeta['inferredType'] {
   if (trimmed === '') return 'empty';
   if (/^(true|false|yes|no)$/i.test(trimmed)) return 'boolean';
   if (looksNumeric(trimmed)) return 'number';
-  if (parseTimestamp(trimmed)) return 'date';
+  if (timestampFormat(trimmed)) return 'date';
   return 'string';
 }
 
@@ -998,15 +1000,19 @@ function pickBestCategoryColumn(schema: ColumnMeta[], names: string[]): ColumnMe
 }
 
 function findTimestamp(line: string): { raw: string; iso: string; ms: number; format: string } | undefined {
+  const found = matchTimestamp(line);
+  return found ? { raw: found.raw, iso: new Date(found.ms).toISOString(), ms: found.ms, format: found.format } : undefined;
+}
+
+/** findTimestamp without building the ISO string, for callers that only need to know whether and how it matched. */
+function matchTimestamp(line: string): { raw: string; ms: number; format: string } | undefined {
   for (const candidate of TIMESTAMP_PATTERNS) {
     const match = candidate.pattern.exec(line);
     if (!match?.[0]) continue;
     const raw = match[0].trim();
     const normalised = candidate.normalise(raw);
     const ms = Date.parse(normalised);
-    if (Number.isFinite(ms)) {
-      return { raw, iso: new Date(ms).toISOString(), ms, format: candidate.name };
-    }
+    if (Number.isFinite(ms)) return { raw, ms, format: candidate.name };
   }
   return undefined;
 }
@@ -1016,6 +1022,18 @@ const EPOCH_MAX_MS = Date.UTC(2100, 0, 1);
 
 /** Unix time in seconds (10 digits, optional fraction) or milliseconds (13 digits), common in JSON logs. */
 function parseEpoch(value: string): { raw: string; iso: string; ms: number; format: string } | undefined {
+  const epoch = matchEpoch(value);
+  if (!epoch) return undefined;
+  const iso = new Date(epoch.ms).toISOString();
+  // Show a readable time in the table instead of the raw number.
+  return { raw: iso.replace('T', ' ').replace('Z', ' UTC'), iso, ms: epoch.ms, format: epoch.format };
+}
+
+function epochFormat(value: string): string | undefined {
+  return matchEpoch(value)?.format;
+}
+
+function matchEpoch(value: string): { ms: number; format: string } | undefined {
   let ms: number | undefined;
   let format = '';
   if (/^\d{10}(?:\.\d+)?$/.test(value)) {
@@ -1026,9 +1044,7 @@ function parseEpoch(value: string): { raw: string; iso: string; ms: number; form
     format = 'Unix time (milliseconds)';
   }
   if (ms === undefined || ms < EPOCH_MIN_MS || ms >= EPOCH_MAX_MS) return undefined;
-  const iso = new Date(ms).toISOString();
-  // Show a readable time in the table instead of the raw number.
-  return { raw: iso.replace('T', ' ').replace('Z', ' UTC'), iso, ms, format };
+  return { ms, format };
 }
 
 function parseTimestamp(value: string): { raw: string; iso: string; ms: number; format: string } | undefined {
@@ -1043,13 +1059,23 @@ function parseTimestamp(value: string): { raw: string; iso: string; ms: number; 
   return { raw: trimmed, iso: new Date(ms).toISOString(), ms, format: 'Browser Date.parse-compatible value' };
 }
 
+/** The `format` parseTimestamp would report for a value, without building the result object. */
+function timestampFormat(value: string): string | undefined {
+  const direct = matchTimestamp(value);
+  if (direct) return direct.format;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const epoch = epochFormat(trimmed);
+  if (epoch) return epoch;
+  return Number.isFinite(Date.parse(trimmed)) ? 'Browser Date.parse-compatible value' : undefined;
+}
+
 function summariseTimestamps(rows: LogRow[]): { format?: string; confidence: number } {
   const withTimestamp = rows.filter((row) => typeof row.timestampMs === 'number');
   if (withTimestamp.length === 0) return { confidence: 0 };
   const formats = new Map<string, number>();
   withTimestamp.forEach((row) => {
-    const found = row.timestampRaw ? parseTimestamp(row.timestampRaw) : undefined;
-    const format = found?.format ?? 'Browser Date.parse-compatible value';
+    const format = (row.timestampRaw ? timestampFormat(row.timestampRaw) : undefined) ?? 'Browser Date.parse-compatible value';
     formats.set(format, (formats.get(format) ?? 0) + 1);
   });
   const [format, count] = [...formats.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['Unknown', 0];
@@ -1184,6 +1210,26 @@ function splitLines(text: string): string[] {
 
 function sortedUnique(values: string[]): string[] {
   return [...new Set(values.filter((value) => value !== undefined && value !== null).map((value) => String(value).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Same as `sortedUnique(values).slice(0, limit)` without building and sorting the full distinct list:
+ * a column of several hundred thousand unique messages only needs its first few in collation order.
+ */
+function smallestSortedUnique(values: Iterable<string>, limit: number): string[] {
+  const smallest: string[] = [];
+  for (const raw of values) {
+    const value = String(raw).trim();
+    if (!value) continue;
+    if (smallest.length === limit && value.localeCompare(smallest[limit - 1]) >= 0) continue;
+    if (smallest.includes(value)) continue;
+    // Insert after any equal-ranked entries, as the stable sort in sortedUnique would.
+    let index = smallest.length;
+    while (index > 0 && value.localeCompare(smallest[index - 1]) < 0) index -= 1;
+    smallest.splice(index, 0, value);
+    if (smallest.length > limit) smallest.pop();
+  }
+  return smallest;
 }
 
 function looksNumeric(value: string): boolean {

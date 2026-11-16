@@ -9,16 +9,26 @@ export const emptyFilters: FilterState = {
   columnFilters: {}
 };
 
+// Lower-cased search text per row. Rows are not changed after parsing, so it is built on the first
+// search and reused for every later keystroke and facet count (several full passes per keystroke).
+const searchTexts = new WeakMap<LogRow, string>();
+
+function searchText(row: LogRow): string {
+  let text = searchTexts.get(row);
+  if (text === undefined) {
+    text = [row.rawLine, row.category, ...Object.values(row.fields)].join('\n').toLowerCase();
+    searchTexts.set(row, text);
+  }
+  return text;
+}
+
 export function applyFilters(rows: LogRow[], filters: FilterState): LogRow[] {
   const search = filters.search.trim().toLowerCase();
   const fromMs = filters.from ? Date.parse(filters.from) : undefined;
   const toMs = filters.to ? Date.parse(filters.to) : undefined;
 
   return rows.filter((row) => {
-    if (search) {
-      const haystack = [row.rawLine, row.category, ...Object.values(row.fields)].join('\n').toLowerCase();
-      if (!haystack.includes(search)) return false;
-    }
+    if (search && !searchText(row).includes(search)) return false;
 
     if (filters.categories.length > 0 && !filters.categories.includes(row.category)) return false;
 
@@ -56,12 +66,18 @@ export function facetColumnsFor(schema: ColumnMeta[]): string[] {
  * the other active filters (search, time, other facets) - excluding the facet's own selection.
  */
 export function buildFacets(rows: LogRow[], filters: FilterState, facetColumns: string[], severityColumn?: string): FilterFacets {
-  const categories = countValues(rows.map((row) => row.category));
+  const categories = facetTotals(rows, '\u0000category', () => countValues(rows.map((row) => row.category))).map((item) => ({ ...item }));
+  // A facet with no selection of its own is counted against the full filter result, which is shared.
+  let sharedMatches: LogRow[] | undefined;
   const columns = facetColumns.map((column) => {
-    const totals = countValues(rows.map((row) => row.fields[column] ?? '').filter((value) => value !== ''));
+    const totals = facetTotals(rows, column, () =>
+      countValues(rows.map((row) => row.fields[column] ?? '').filter((value) => value !== ''))
+    );
+    const ownSelection = (filters.columnFilters[column] ?? []).length > 0;
     const withoutSelf: FilterState = { ...filters, columnFilters: { ...filters.columnFilters, [column]: [] } };
+    const matches = ownSelection ? applyFilters(rows, withoutSelf) : (sharedMatches ??= applyFilters(rows, withoutSelf));
     const live = new Map(
-      countValues(applyFilters(rows, withoutSelf).map((row) => row.fields[column] ?? '').filter((value) => value !== '')).map((item) => [
+      countValues(matches.map((row) => row.fields[column] ?? '').filter((value) => value !== '')).map((item) => [
         item.value,
         item.count
       ])
@@ -72,6 +88,23 @@ export function buildFacets(rows: LogRow[], filters: FilterState, facetColumns: 
   });
 
   return { categories, columns };
+}
+
+// Facet totals ignore the filters, so they are counted once per rows array rather than on every keystroke.
+const totalsCache = new WeakMap<LogRow[], Map<string, Array<{ value: string; count: number }>>>();
+
+function facetTotals(rows: LogRow[], key: string, count: () => Array<{ value: string; count: number }>): Array<{ value: string; count: number }> {
+  let byKey = totalsCache.get(rows);
+  if (!byKey) {
+    byKey = new Map();
+    totalsCache.set(rows, byKey);
+  }
+  let totals = byKey.get(key);
+  if (!totals) {
+    totals = count();
+    byKey.set(key, totals);
+  }
+  return totals;
 }
 
 function severityRank(value: string): number {

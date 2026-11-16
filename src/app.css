@@ -486,8 +486,11 @@ table.log thead th {
   white-space: nowrap;
 }
 
+/* A fixed line height keeps every row the same height (with or without a severity tag), which the
+   windowed rendering in LogTable relies on to map scroll offsets to rows. */
 table.log tbody td {
   padding: 8px 12px;
+  line-height: 20px;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
   max-width: 360px;
@@ -518,7 +521,8 @@ table.log tbody tr {
   cursor: pointer;
 }
 
-table.log tbody tr:nth-child(even) {
+/* Set by LogTable from the row's position in the list, since only a window of rows is rendered. */
+table.log tbody tr.stripe {
   background: var(--row-stripe);
 }
 
@@ -557,6 +561,18 @@ table.log tbody tr:focus-visible {
   outline-offset: -2px;
 }
 
+/* Stand-ins for the rows scrolled out of the rendered window. */
+table.log tbody tr.spacer,
+table.log tbody tr.spacer:hover {
+  background: transparent;
+  cursor: default;
+}
+
+table.log tbody tr.spacer td {
+  padding: 0;
+  border: 0;
+}
+
 /* The message column takes every pixel the other columns don't need. */
 table.log.has-flex th.message,
 table.log.has-flex td.message {
@@ -566,6 +582,11 @@ table.log.has-flex td.message {
 
 table.log td.severity {
   width: 1%;
+}
+
+/* Top-aligned within the cell's 20px line so it never makes a row taller. */
+table.log td .sev-tag {
+  vertical-align: top;
 }
 
 table.log mark {
@@ -946,6 +967,7 @@ body.resizing-inspector {
 
 table.log .more-lines {
   display: inline-block;
+  margin-top: 1px;
   margin-right: 6px;
   padding: 0 6px;
   border-radius: 999px;
@@ -954,7 +976,8 @@ table.log .more-lines {
   font-family: var(--font-sans);
   font-size: 11px;
   line-height: 18px;
-  vertical-align: 1px;
+  /* Top-aligned within the cell's 20px line so it never makes a row taller. */
+  vertical-align: top;
 }
 
 

@@ -45,6 +45,7 @@
   let workbook: Workbook | null = null;
   let workbookType: SpreadsheetType | null = null;
   let sheetIndex = 0;
+  let logTable: LogTable | undefined;
 
   const encodings = supportedEncodings();
 
@@ -327,9 +328,11 @@
   async function step(direction: -1 | 1) {
     const index = neighbourIndex(direction, selectedRow, selectedPosition, filteredRows, rowOrder);
     if (index === -1) return;
-    const focusWasOnRow = document.activeElement?.matches('tr[data-row-id]') ?? false;
+    const focusWasOnRow = logTable?.rowHasFocus() ?? document.activeElement?.matches('tr[data-row-id]') ?? false;
     selectedRow = filteredRows[index];
     await tick();
+    // The table only renders rows near the viewport, so bring the row into range first.
+    await logTable?.reveal(selectedRow.id);
     const element = rowElement(selectedRow.id);
     if (!element) return;
     if (focusWasOnRow) element.focus({ preventScroll: true });
@@ -341,6 +344,7 @@
     selectedRow = null;
     if (!id || !returnFocus) return;
     await tick();
+    await logTable?.reveal(id);
     rowElement(id)?.focus();
   }
 
@@ -505,6 +509,7 @@
         {/if}
 
         <LogTable
+          bind:this={logTable}
           rows={filteredRows}
           columns={tableColumns}
           {visibleColumns}
