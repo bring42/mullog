@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, filterTokenLabel } from './filters';
+import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, escapeCsv, filterTokenLabel } from './filters';
 import { parseFixture, withoutEofRow } from './__fixtures__/load';
 
 describe('search over merged rows', () => {
@@ -57,5 +57,18 @@ describe('filter tokens', () => {
     expect(clearFilterToken(withColon, first).columnFilters.url).toEqual(['http://b']);
     const [search] = describeActiveFilters(filters);
     expect(clearFilterToken(filters, search).search).toBe('');
+  });
+});
+
+describe('CSV export', () => {
+  it('defuses formula-looking cells but leaves numbers alone', () => {
+    expect(escapeCsv('=HYPERLINK("https://evil.example","x")')).toBe(`"'=HYPERLINK(""https://evil.example"",""x"")"`);
+    expect(escapeCsv('+cmd')).toBe("'+cmd");
+    expect(escapeCsv('-2+3')).toBe("'-2+3");
+    expect(escapeCsv('@SUM(A1)')).toBe("'@SUM(A1)");
+    expect(escapeCsv('\tx')).toBe("'\tx");
+    expect(escapeCsv('-5')).toBe('-5');
+    expect(escapeCsv('+3.25')).toBe('+3.25');
+    expect(escapeCsv('plain, text')).toBe('"plain, text"');
   });
 });

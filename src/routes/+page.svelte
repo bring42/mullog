@@ -57,7 +57,7 @@
   $: activeTokens = describeActiveFilters(filters);
   $: tableColumns = detection?.schema.map((column) => column.name) ?? [];
   $: timestampColumn = detection?.schema.find((column) => column.role === 'timestamp')?.name;
-  $: exportName = `${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered.csv`;
+  $: exportName = `${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered`;
   $: rowOrder = new Map(rows.map((row, index) => [row.id, index]));
   $: selectedPosition = selectedRow ? filteredRows.findIndex((row) => row.id === selectedRow?.id) : -1;
   $: canPrev = neighbourIndex(-1, selectedRow, selectedPosition, filteredRows, rowOrder) !== -1;

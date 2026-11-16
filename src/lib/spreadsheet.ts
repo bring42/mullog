@@ -106,3 +106,56 @@ export function firstUsefulSheet(workbook: Workbook): number {
   const index = workbook.sheets.findIndex((sheet) => sheet.rows.length > 0);
   return index === -1 ? 0 : index;
 }
+
+/** Excel limits: characters per cell, rows and columns per sheet. */
+export const XLSX_MAX_CELL_CHARS = 32767;
+export const XLSX_MAX_ROWS = 1048576;
+export const XLSX_MAX_COLUMNS = 16384;
+const TRUNCATION_MARKER = ' …[truncated]';
+
+export interface XlsxExport {
+  bytes: Uint8Array;
+  /** Number of sheets the rows were split across (one unless the Excel row limit was hit). */
+  sheetCount: number;
+  /** Cells cut to Excel's per-cell character limit. */
+  truncatedCells: number;
+}
+
+/**
+ * Builds an .xlsx file from a header row plus data rows. Every cell is text so ids and leading
+ * zeros survive. Rows beyond Excel's per-sheet limit continue on further sheets, each with the
+ * header, because SheetJS would otherwise silently drop them.
+ */
+export async function tableToXlsx(table: string[][], sheetName = 'Filtered rows'): Promise<XlsxExport> {
+  const [header = [], ...body] = table;
+  if (header.length > XLSX_MAX_COLUMNS) {
+    throw new Error(`Excel supports at most ${XLSX_MAX_COLUMNS.toLocaleString()} columns; this export has ${header.length.toLocaleString()}.`);
+  }
+
+  const XLSX = await import('xlsx');
+  let truncatedCells = 0;
+  const clip = (cell: string): string => {
+    if (cell.length <= XLSX_MAX_CELL_CHARS) return cell;
+    truncatedCells += 1;
+    return cell.slice(0, XLSX_MAX_CELL_CHARS - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+  };
+
+  const sample = table.slice(0, 200);
+  const widths = header.map((_, column) => {
+    const longest = sample.reduce((max, row) => Math.max(max, (row[column] ?? '').length), 0);
+    return { wch: Math.min(60, Math.max(8, longest + 2)) };
+  });
+
+  const rowsPerSheet = XLSX_MAX_ROWS - 1;
+  const sheetCount = Math.max(1, Math.ceil(body.length / rowsPerSheet));
+  const workbook = XLSX.utils.book_new();
+  for (let index = 0; index < sheetCount; index += 1) {
+    const chunk = body.slice(index * rowsPerSheet, (index + 1) * rowsPerSheet);
+    const sheet = XLSX.utils.aoa_to_sheet([header, ...chunk].map((row) => row.map(clip)));
+    sheet['!cols'] = widths;
+    XLSX.utils.book_append_sheet(workbook, sheet, sheetCount === 1 ? sheetName : `${sheetName} ${index + 1}`);
+  }
+
+  const bytes = new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  return { bytes, sheetCount, truncatedCells };
+}
