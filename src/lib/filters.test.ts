@@ -59,3 +59,18 @@ describe('filter tokens', () => {
     expect(clearFilterToken(filters, search).search).toBe('');
   });
 });
+
+describe('Excel export', () => {
+  it('round-trips the exported table through xlsx', async () => {
+    const { tableToXlsx, readWorkbook } = await import('./spreadsheet');
+    const table = [
+      ['line_number', 'message'],
+      ['1', '007, leading zeros'],
+      ['2', 'multi\nline "quoted"']
+    ];
+    const bytes = await tableToXlsx(table);
+    const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const workbook = await readWorkbook(copy);
+    expect(workbook.sheets[0].rows.slice(0, 3)).toEqual(table);
+  });
+});

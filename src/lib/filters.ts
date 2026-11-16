@@ -185,17 +185,25 @@ export function clearFilterToken(filters: FilterState, token: FilterToken): Filt
   }
 }
 
-export function rowsToCsv(rows: LogRow[]): string {
+/** Header row plus one string array per log row; shared by the CSV and Excel exports. */
+export function rowsToTable(rows: LogRow[]): string[][] {
   const reserved = new Set(['line_number', 'timestamp', 'severity', 'category', 'raw']);
   const fieldNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))].filter((name) => !reserved.has(name));
   const headers = ['line_number', 'timestamp_iso', 'timestamp_raw', 'severity', 'category', ...fieldNames, 'raw_line'];
-  const csvRows = [headers, ...rows.map((row) => headers.map((header) => valueForHeader(row, header)))];
-  return csvRows.map((row) => row.map(escapeCsv).join(',')).join('\n');
+  return [headers, ...rows.map((row) => headers.map((header) => valueForHeader(row, header)))];
+}
+
+export function rowsToCsv(rows: LogRow[]): string {
+  return rowsToTable(rows)
+    .map((row) => row.map(escapeCsv).join(','))
+    .join('\n');
 }
 
 export function downloadCsv(rows: LogRow[], fileName = 'filtered-log-export.csv'): void {
-  const csv = rowsToCsv(rows);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  downloadBlob(new Blob([rowsToCsv(rows)], { type: 'text/csv;charset=utf-8' }), fileName);
+}
+
+export function downloadBlob(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;

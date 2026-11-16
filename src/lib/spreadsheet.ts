@@ -106,3 +106,21 @@ export function firstUsefulSheet(workbook: Workbook): number {
   const index = workbook.sheets.findIndex((sheet) => sheet.rows.length > 0);
   return index === -1 ? 0 : index;
 }
+
+/** Excel refuses cells longer than this. */
+const MAX_CELL_CHARS = 32767;
+
+/** Builds an .xlsx file from a table of strings. Every cell is text so ids and leading zeros survive. */
+export async function tableToXlsx(table: string[][], sheetName = 'Filtered rows'): Promise<Uint8Array> {
+  const XLSX = await import('xlsx');
+  const clipped = table.map((row) => row.map((cell) => (cell.length > MAX_CELL_CHARS ? cell.slice(0, MAX_CELL_CHARS) : cell)));
+  const sheet = XLSX.utils.aoa_to_sheet(clipped);
+  const widths = (table[0] ?? []).map((_, column) => {
+    const longest = table.slice(0, 200).reduce((max, row) => Math.max(max, (row[column] ?? '').length), 0);
+    return { wch: Math.min(60, Math.max(8, longest + 2)) };
+  });
+  sheet['!cols'] = widths;
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+  return new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+}
