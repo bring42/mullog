@@ -4,27 +4,14 @@
   export let headline = 'Drop a log, CSV, Excel or JSON file';
   export let hint = 'Or click to choose. Everything stays on this device.';
 
-  const ACCEPTED_TYPES = [
-    'text/plain',
-    'text/csv',
-    'text/tab-separated-values',
-    'application/json',
-    'application/x-ndjson',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.oasis.opendocument.spreadsheet'
-  ];
-  const ACCEPT = ['.txt', '.csv', '.tsv', '.log', '.json', '.jsonl', '.ndjson', '.xlsx', '.xlsm', '.xlsb', '.xls', '.ods', ...ACCEPTED_TYPES].join(',');
-
   const dispatch = createEventDispatcher<{ files: File[] }>();
   let dragging = false;
   let input: HTMLInputElement;
 
+  // Any file is fine: logs often have no extension (syslog, messages, app.log.1) and the
+  // parser works out the layout from the content.
   function emitFiles(fileList: FileList | null) {
-    const files = [...(fileList ?? [])].filter(
-      (file) =>
-        /\.(txt|csv|tsv|log|json|jsonl|ndjson|xlsx|xlsm|xlsb|xls|ods)$/i.test(file.name) || ACCEPTED_TYPES.includes(file.type)
-    );
+    const files = [...(fileList ?? [])];
     if (files.length > 0) dispatch('files', files);
   }
 </script>
@@ -50,7 +37,6 @@
   <input
     bind:this={input}
     type="file"
-    accept={ACCEPT}
     on:change={(event) => emitFiles((event.currentTarget as HTMLInputElement).files)}
   />
   <div class="dz-headline">{headline}</div>

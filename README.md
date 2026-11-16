@@ -6,7 +6,9 @@ A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filterin
 
 ## Features
 
-- Local drag/drop or file picker input for `.log`, `.txt`, `.csv`, `.tsv`, `.xlsx`, `.xls`, `.ods`, `.json`, `.jsonl` and `.ndjson` files
+- Local drag/drop or file picker input for any file: `.log`, `.txt`, `.csv`, `.tsv`, `.xlsx`, `.xls`, `.ods`, `.json`, `.jsonl`, `.ndjson`, extension-less logs such as `syslog` or `messages`, and gzipped versions of all of them (`.gz`, decompressed in the browser)
+- Structured log lines split into columns: Apache/Nginx access logs (with a level derived from the HTTP status), syslog (RFC 3164 and RFC 5424, with facility and level from the priority), IIS / W3C extended logs (`#Fields:`), and logfmt `key=value` lines
+- Import setup: finds title/banner lines above the data and totals/footer lines below it (in text files and spreadsheets) and skips them. When the layout isn't clear it opens a setup where you pick the start and end line, ignore comment lines, choose how lines are read (comparing each option on a real line from further down the file), set the delimiter and header row, and see a live preview. It can be reopened from the toolbar at any time
 - Spreadsheets: every sheet is read, with a sheet picker for multi-sheet workbooks. Row numbers match the spreadsheet's, and date cells become `YYYY-MM-DD HH:MM:SS`. Formulas are not evaluated; their saved results are shown. The reader ([SheetJS](https://sheetjs.com) 0.20.3, from the SheetJS CDN rather than the outdated npm copy) is only downloaded when a spreadsheet is opened.
 - JSON Lines and JSON arrays (also detected by content, e.g. JSON logs saved as `.log`): nested objects become dotted columns (`http.status`), pino/bunyan numeric levels (30 = INFO, 50 = ERROR) and Unix-time timestamps are understood, and `msg`/`message`, `level`/`log.level`/`severity` and `time`/`@timestamp` are picked up automatically
 - Browser-side decoding via `TextDecoder`
@@ -15,7 +17,7 @@ A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filterin
   - UTF-8 with BOM
   - Windows-1252
   - ISO-8859-1
-- Auto detection for CSV vs JSON vs plain text logs
+- Auto detection for CSV vs JSON vs structured log formats vs plain text logs
 - CSV delimiter detection for comma, semicolon, tab, and pipe
 - Header detection, robust quoted CSV parsing, malformed-row warnings
 - TXT parsing for line number, raw line, timestamp, severity, category/source, and message
@@ -25,7 +27,7 @@ A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filterin
 - Active filter tokens
 - Raw, structured, and hybrid table views
 - Row inspector with raw line, parsed fields, line number, and detection notes
-- CSV or Excel (.xlsx) export of the currently filtered rows
+- Export of the currently filtered rows as CSV, Excel (.xlsx), OpenDocument (.ods), TSV, JSON, JSON Lines, a Markdown table, or the original log lines
 - Keyboard shortcuts:
   - `/` focuses search
   - `Esc` closes the selected row inspector and mobile filter drawer

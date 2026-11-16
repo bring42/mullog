@@ -122,11 +122,11 @@ export interface XlsxExport {
 }
 
 /**
- * Builds an .xlsx file from a header row plus data rows. Every cell is text so ids and leading
+ * Builds an .xlsx or .ods file from a header row plus data rows. Every cell is text so ids and leading
  * zeros survive. Rows beyond Excel's per-sheet limit continue on further sheets, each with the
  * header, because SheetJS would otherwise silently drop them.
  */
-export async function tableToXlsx(table: string[][], sheetName = 'Filtered rows'): Promise<XlsxExport> {
+export async function tableToWorkbook(table: string[][], bookType: 'xlsx' | 'ods' = 'xlsx', sheetName = 'Filtered rows'): Promise<XlsxExport> {
   const [header = [], ...body] = table;
   if (header.length > XLSX_MAX_COLUMNS) {
     throw new Error(`Excel supports at most ${XLSX_MAX_COLUMNS.toLocaleString()} columns; this export has ${header.length.toLocaleString()}.`);
@@ -156,6 +156,6 @@ export async function tableToXlsx(table: string[][], sheetName = 'Filtered rows'
     XLSX.utils.book_append_sheet(workbook, sheet, sheetCount === 1 ? sheetName : `${sheetName} ${index + 1}`);
   }
 
-  const bytes = new Uint8Array(XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  const bytes = new Uint8Array(XLSX.write(workbook, { type: 'array', bookType }) as ArrayBuffer);
   return { bytes, sheetCount, truncatedCells };
 }

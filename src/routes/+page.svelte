@@ -6,6 +6,7 @@
   import LogTable from '$lib/components/LogTable.svelte';
   import RowInspector from '$lib/components/RowInspector.svelte';
   import ExportButton from '$lib/components/ExportButton.svelte';
+  import ImportSetup from '$lib/components/ImportSetup.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { decodeBuffer, detectEncoding, supportedEncodings } from '$lib/encoding';
   import {
@@ -18,10 +19,24 @@
     filterTokenKey,
     filterTokenLabel
   } from '$lib/filters';
-  import { parseLogText, parseSpreadsheet } from '$lib/parser';
+  import { parseLogText, parseSpreadsheet, splitLines } from '$lib/parser';
+  import { analyseSheetRows, analyseText } from '$lib/layout';
+  import { gunzip, gunzippedName, isGzip, isTarArchive } from '$lib/compression';
   import { firstUsefulSheet, readWorkbook, spreadsheetType, type Workbook } from '$lib/spreadsheet';
   import { decodeHashPayload, hasHashPayload, takePendingShare } from '$lib/share';
-  import type { ColumnMeta, DetectionState, EncodingName, FilterState, LogRow, ParseWarning, SpreadsheetType } from '$lib/types';
+  import type {
+    ColumnMeta,
+    DetectionState,
+    EncodingName,
+    FilterState,
+    ImportSettings,
+    LayoutAnalysis,
+    LogRow,
+    ParseResult,
+    ParseWarning,
+    PreviewLine,
+    SpreadsheetType
+  } from '$lib/types';
 
   let currentBuffer: ArrayBuffer | null = null;
   let currentText = '';
@@ -46,6 +61,27 @@
   let workbookType: SpreadsheetType | null = null;
   let sheetIndex = 0;
   let logTable: LogTable | undefined;
+  /** How the current file (or sheet) is laid out, and the settings it is read with. */
+  let analysis: LayoutAnalysis | null = null;
+  let importSettings: ImportSettings | null = null;
+  let setupOpen = false;
+  /** The setup opened on its own after loading, rather than from the toolbar. */
+  let setupInitial = false;
+  let setupLines: string[] = [];
+  /** The last whole-file JSON parse for the setup preview. */
+  let jsonPreview: { key: string; result: ParseResult } | null = null;
+  /** True once the user applied their own import settings; detection then stops replacing them. */
+  let settingsCustomised = false;
+  /** Where focus goes back to when the setup closes. */
+  let setupReturnFocus: HTMLElement | null = null;
+  let headLines: PreviewLine[] = [];
+  let tailLines: PreviewLine[] = [];
+
+  /** Lines shown in the setup's line picker. */
+  const HEAD_PREVIEW = 120;
+  const TAIL_PREVIEW = 12;
+  /** Lines parsed for the setup's live preview. */
+  const PREVIEW_LINES = 400;
 
   const encodings = supportedEncodings();
 
@@ -162,6 +198,28 @@
     parseError = '';
     filters = { ...emptyFilters, columnFilters: {} };
     selectedRow = null;
+    setupOpen = false;
+
+    if (isTarArchive(name, buffer)) {
+      loadingMessage = '';
+      loadError = `${name} is a tar archive with several files inside. Extract it first, then open the log you want.`;
+      return;
+    }
+
+    if (isGzip(name, buffer)) {
+      loadingMessage = `Decompressing ${name}…`;
+      try {
+        const inner = await gunzip(buffer);
+        if (token !== loadToken) return;
+        loadingMessage = '';
+        return loadFile(gunzippedName(name), inner);
+      } catch (error) {
+        if (token !== loadToken) return;
+        loadingMessage = '';
+        loadError = `${name} could not be decompressed${error instanceof Error && error.message ? `: ${error.message}` : '.'}`;
+        return;
+      }
+    }
 
     const sheetType = spreadsheetType(name, buffer);
     if (sheetType) {
@@ -177,7 +235,9 @@
         workbookType = sheetType;
         sheetIndex = firstUsefulSheet(book);
         fileLoaded = true;
+        analyseCurrent();
         parseCurrent();
+        openSetupIfUnclear();
       } catch (error) {
         if (token !== loadToken) return;
         loadError = `${name} could not be read as a spreadsheet${error instanceof Error && error.message ? `: ${error.message}` : '.'}`;
@@ -200,28 +260,138 @@
     encodingWarnings = detected.warnings;
     currentText = decodeBuffer(currentBuffer, encoding);
     fileLoaded = true;
+    analyseCurrent();
     parseCurrent();
+    openSetupIfUnclear();
+  }
+
+  function currentSheet() {
+    return workbook?.sheets[sheetIndex] ?? { name: 'Sheet1', rows: [] };
+  }
+
+  function sheetRowNumbers(sheet: { rows: string[][]; rowNumbers?: number[] }): number[] {
+    return sheet.rows.map((_, index) => sheet.rowNumbers?.[index] ?? index + 1);
+  }
+
+  function analyseCurrent(keepCustom = false) {
+    if (workbook) {
+      const sheet = currentSheet();
+      analysis = analyseSheetRows(sheet.rows, sheetRowNumbers(sheet));
+    } else {
+      analysis = analyseText(currentText, { fileName });
+    }
+    if (keepCustom && settingsCustomised && importSettings) return;
+    importSettings = analysis.suggested;
+    settingsCustomised = false;
+  }
+
+  function openSetupIfUnclear() {
+    if (analysis?.unclear && !parseError) openSetup(true);
+  }
+
+  function openSetup(initial = false) {
+    if (!analysis) analyseCurrent();
+    if (!analysis) return;
+    if (workbook) {
+      const sheet = currentSheet();
+      const numbers = sheetRowNumbers(sheet);
+      const asLine = (index: number): PreviewLine => ({ number: numbers[index], text: sheet.rows[index].join('  │  ').replace(/(\s+│\s+)+$/, '') });
+      headLines = sheet.rows.slice(0, HEAD_PREVIEW).map((_, index) => asLine(index));
+      const tailStart = Math.max(HEAD_PREVIEW, sheet.rows.length - TAIL_PREVIEW);
+      tailLines = sheet.rows.slice(tailStart).map((_, index) => asLine(tailStart + index));
+    } else {
+      setupLines = splitLines(currentText);
+      if (setupLines.length > 1 && setupLines[setupLines.length - 1] === '') setupLines.pop();
+      headLines = setupLines.slice(0, HEAD_PREVIEW).map((text, index) => ({ number: index + 1, text }));
+      const tailStart = Math.max(HEAD_PREVIEW, setupLines.length - TAIL_PREVIEW);
+      tailLines = setupLines.slice(tailStart).map((text, index) => ({ number: tailStart + index + 1, text }));
+    }
+    setupInitial = initial;
+    setupReturnFocus = initial ? null : (document.activeElement as HTMLElement | null);
+    setupOpen = true;
+  }
+
+  async function closeSetup() {
+    if (!setupOpen) return;
+    setupOpen = false;
+    setupLines = [];
+    jsonPreview = null;
+    const target = setupReturnFocus;
+    setupReturnFocus = null;
+    await tick();
+    if (target?.isConnected) target.focus();
+  }
+
+  function applySettings(next: ImportSettings) {
+    importSettings = next;
+    settingsCustomised = true;
+    filters = { ...emptyFilters, columnFilters: {} };
+    selectedRow = null;
+    closeSetup();
+    parseCurrent();
+  }
+
+  /** Parses just the start of the file, for the setup's live preview. */
+  function previewParse(settings: ImportSettings): ParseResult {
+    const options = parseOptions();
+    if (workbook && workbookType) {
+      const sheet = currentSheet();
+      const numbers = sheetRowNumbers(sheet);
+      const lastRow = numbers[numbers.length - 1] ?? 0;
+      const count = numbers.filter((number) => number <= settings.skipStart).length + PREVIEW_LINES;
+      const rows = sheet.rows.slice(0, count);
+      const sliceLast = numbers[rows.length - 1] ?? 0;
+      return parseSpreadsheet({ name: sheet.name, rows, rowNumbers: numbers.slice(0, rows.length) }, [], workbookType, {
+        ...sheetOptions(options),
+        settings: { ...settings, skipEnd: Math.max(0, sliceLast - (lastRow - settings.skipEnd)) }
+      });
+    }
+    // A JSON document only parses whole, so only when the file can plausibly be one, and once per
+    // set of settings. Otherwise the start of the file shows that it doesn't read as JSON.
+    if (settings.layout === 'json' && analysis?.candidates.some((candidate) => candidate.layout === 'json' && candidate.confidence >= 0.5)) {
+      const key = JSON.stringify(settings);
+      if (jsonPreview?.key !== key) jsonPreview = { key, result: parseLogText(currentText, { ...options, settings }) };
+      return jsonPreview.result;
+    }
+    const lines = setupLines.slice(0, settings.skipStart + PREVIEW_LINES);
+    const skipEnd = Math.max(0, lines.length - (setupLines.length - settings.skipEnd));
+    return parseLogText(lines.join('\n'), { ...options, settings: { ...settings, skipEnd } });
+  }
+
+  function parseOptions() {
+    return {
+      fileName,
+      fileSize,
+      encoding,
+      encodingConfidence,
+      encodingNotes,
+      encodingWarnings,
+      parserMode: 'auto' as const,
+      settings: importSettings ?? undefined
+    };
+  }
+
+  function sheetOptions<T extends ReturnType<typeof parseOptions>>(options: T): T {
+    return {
+      ...options,
+      encoding: 'utf-8',
+      encodingConfidence: 1,
+      encodingNotes: ['Cells are read by the spreadsheet reader; no text encoding applies.'],
+      encodingWarnings: []
+    };
   }
 
   function parseCurrent() {
     try {
       parseError = '';
-      const options = {
-        fileName,
-        fileSize,
-        encoding,
-        encodingConfidence,
-        encodingNotes,
-        encodingWarnings,
-        parserMode: 'auto' as const
-      };
+      const options = parseOptions();
       const result =
         workbook && workbookType
           ? parseSpreadsheet(
-              workbook.sheets[sheetIndex] ?? { name: 'Sheet1', rows: [] },
+              currentSheet(),
               workbook.sheets.map((sheet) => sheet.name),
               workbookType,
-              { ...options, encoding: 'utf-8', encodingConfidence: 1, encodingNotes: ['Cells are read by the spreadsheet reader; no text encoding applies.'], encodingWarnings: [] }
+              sheetOptions(options)
             )
           : parseLogText(currentText, options);
       detection = result.detection;
@@ -238,7 +408,9 @@
     sheetIndex = index;
     filters = { ...emptyFilters, columnFilters: {} };
     selectedRow = null;
+    analyseCurrent();
     parseCurrent();
+    openSetupIfUnclear();
   }
 
   function changeEncoding(nextEncoding: EncodingName) {
@@ -248,6 +420,8 @@
       encodingConfidence = 1;
       encodingNotes = [`Manual override: ${encoding}.`];
       encodingWarnings = [];
+      // Detection on the wrongly decoded text may have been off; settings the user chose stay.
+      analyseCurrent(true);
       parseCurrent();
     }
   }
@@ -280,6 +454,9 @@
     workbook = null;
     workbookType = null;
     sheetIndex = 0;
+    analysis = null;
+    importSettings = null;
+    closeSetup();
     currentBuffer = null;
     currentText = '';
     fileName = '';
@@ -349,6 +526,8 @@
   }
 
   function handleKeyboard(event: KeyboardEvent) {
+    // The import setup is a modal dialog with its own keys.
+    if (setupOpen) return;
     const target = event.target as HTMLElement | null;
     const typing =
       target?.tagName === 'INPUT' ||
@@ -396,7 +575,7 @@
         <div class="parse-error load-error" role="alert">{loadError}</div>
       {/if}
       <div class="empty-foot">
-        Logs (.log, .txt), CSV/TSV, Excel (.xlsx, .xls), OpenDocument (.ods), JSON and JSON Lines — UTF-8, Windows-1252, and ISO-8859-1.
+        Logs (.log, .txt, syslog, access logs, IIS/W3C, logfmt), CSV/TSV, Excel (.xlsx, .xls), OpenDocument (.ods), JSON and JSON Lines, also gzipped (.gz) — UTF-8, Windows-1252, and ISO-8859-1.
       </div>
     </div>
   </div>
@@ -444,8 +623,18 @@
       <div class="toolbar-actions">
         <span class="row-count-pill desktop-only"><b>{filteredRows.length.toLocaleString()}</b> shown</span>
         <div class="desktop-only">
-          <DetectionPanel {detection} {encoding} encodings={workbook ? [] : encodings} on:encodingChange={(event) => changeEncoding(event.detail)} />
+          <DetectionPanel
+            {detection}
+            {encoding}
+            encodings={workbook ? [] : encodings}
+            on:encodingChange={(event) => changeEncoding(event.detail)}
+            on:setup={() => openSetup()}
+          />
         </div>
+        <button class="btn ghost desktop-only" type="button" on:click={() => openSetup()} title="Choose which lines to read and how">
+          <Icon name="sliders" size={16} />
+          Import
+        </button>
         <ExportButton rows={filteredRows} fileName={exportName} />
         <button class="btn ghost desktop-only" type="button" on:click={clearFile} title="Load another file">New file</button>
         <div class="mobile-only">
@@ -457,6 +646,7 @@
             fileSize={formatSize(fileSize)}
             on:encodingChange={(event) => changeEncoding(event.detail)}
             on:newFile={clearFile}
+            on:setup={() => openSetup()}
           />
         </div>
       </div>
@@ -508,6 +698,16 @@
           </div>
         {/if}
 
+        {#if rows.length === 0 && !parseError}
+          <div class="no-rows" role="status">
+            <p>No rows with the current import settings.</p>
+            <button class="btn" type="button" on:click={() => openSetup()}>
+              <Icon name="sliders" size={16} />
+              Adjust import
+            </button>
+          </div>
+        {/if}
+
         <LogTable
           bind:this={logTable}
           rows={filteredRows}
@@ -521,6 +721,21 @@
           on:select={(event) => (selectedRow = event.detail)}
         />
       </section>
+
+      {#if setupOpen && analysis && importSettings}
+        <ImportSetup
+          {fileName}
+          kind={workbook ? 'sheet' : 'text'}
+          {analysis}
+          settings={importSettings}
+          {headLines}
+          {tailLines}
+          preview={previewParse}
+          initial={setupInitial}
+          on:apply={(event) => applySettings(event.detail)}
+          on:close={closeSetup}
+        />
+      {/if}
 
       <RowInspector
         row={selectedRow}
@@ -545,6 +760,19 @@
   .paste-btn {
     margin-top: 12px;
     color: var(--text-muted);
+  }
+
+  .no-rows {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 32px 16px;
+    color: var(--text-muted);
+  }
+
+  .no-rows p {
+    margin: 0;
   }
 
   .load-error {

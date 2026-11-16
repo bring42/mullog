@@ -55,6 +55,7 @@
             ".xlsx",
             ".xls",
             ".ods",
+            ".gz",
             "text/plain",
             "text/csv",
             "text/tab-separated-values",
@@ -63,6 +64,7 @@
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-excel",
             "application/vnd.oasis.opendocument.spreadsheet",
+            "application/gzip",
             "application/octet-stream"
           ]
         }
@@ -98,6 +100,9 @@
         ],
         "application/vnd.oasis.opendocument.spreadsheet": [
           ".ods"
+        ],
+        "application/gzip": [
+          ".gz"
         ]
       }
     }
