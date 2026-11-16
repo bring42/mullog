@@ -14,12 +14,25 @@
    */
   export let variant: 'summary' | 'overflow' = 'summary';
 
-  const dispatch = createEventDispatcher<{ encodingChange: EncodingName; newFile: void }>();
+  const dispatch = createEventDispatcher<{ encodingChange: EncodingName; newFile: void; setup: void }>();
   const panelId = `detection-panel-${Math.random().toString(36).slice(2, 8)}`;
 
   let open = false;
   let container: HTMLDivElement;
   let trigger: HTMLButtonElement;
+
+  const TYPE_LABELS: Partial<Record<string, string>> = {
+    txt: 'Plain log',
+    access: 'Access log',
+    w3c: 'W3C / IIS',
+    syslog: 'Syslog',
+    logfmt: 'logfmt',
+    jsonl: 'JSON Lines'
+  };
+
+  function typeLabel(type: string): string {
+    return TYPE_LABELS[type] ?? type.toUpperCase();
+  }
 
   function pct(value?: number): string {
     return `${Math.round((value ?? 0) * 100)}%`;
@@ -73,7 +86,7 @@
       {#if warningCount > 0}<span class="warn-dot" aria-hidden="true"></span>{/if}
     {:else}
       {#if detection}
-        {detection.detectedType.toUpperCase()} · {detection.rowCount.toLocaleString()}
+        {typeLabel(detection.detectedType)} · {detection.rowCount.toLocaleString()}
       {:else}
         Detection
       {/if}
@@ -97,7 +110,11 @@
           <dd>{fileSize}</dd>
         {/if}
         <dt>Type</dt>
-        <dd>{detection.detectedType.toUpperCase()}</dd>
+        <dd>{typeLabel(detection.detectedType)}</dd>
+        {#if detection.skippedLines}
+          <dt>Skipped</dt>
+          <dd>{detection.skippedLines.toLocaleString()} {detection.sheetName ? 'row' : 'line'}{detection.skippedLines === 1 ? '' : 's'}</dd>
+        {/if}
         {#if detection.sheetName}
           <dt>Sheet</dt>
           <dd>{detection.sheetName}{#if detection.sheetNames && detection.sheetNames.length > 1} ({detection.sheetNames.length} in workbook){/if}</dd>
@@ -142,6 +159,14 @@
           </div>
         </div>
       {/if}
+      <button
+        class="btn panel-action"
+        type="button"
+        on:click={() => {
+          open = false;
+          dispatch('setup');
+        }}>Import settings…</button
+      >
       {#if variant === 'overflow'}
         <button class="btn panel-action" type="button" on:click={() => dispatch('newFile')}>Load another file</button>
       {/if}

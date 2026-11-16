@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { parseText } from './__fixtures__/load';
 import { parseSpreadsheet, type ParseOptions } from './parser';
-import { firstUsefulSheet, readWorkbook, spreadsheetType, tableToXlsx, XLSX_MAX_CELL_CHARS } from './spreadsheet';
+import { firstUsefulSheet, readWorkbook, spreadsheetType, tableToWorkbook, XLSX_MAX_CELL_CHARS } from './spreadsheet';
 
 const pino = [
   '{"level":30,"time":1730707200000,"pid":42,"hostname":"api-1","msg":"server started","http":{"port":8080}}',
@@ -195,14 +195,14 @@ describe('Excel export', () => {
       ['2', 'multi\nline "quoted"'],
       ['3', '=1+1']
     ];
-    const result = await tableToXlsx(table);
+    const result = await tableToWorkbook(table);
     expect(result).toMatchObject({ sheetCount: 1, truncatedCells: 0 });
     const workbook = await readWorkbook(toBuffer(result.bytes));
     expect(workbook.sheets[0].rows).toEqual(table);
   });
 
   it('cuts over-long cells to the Excel limit with a visible marker and counts them', async () => {
-    const result = await tableToXlsx([['raw_line'], ['x'.repeat(XLSX_MAX_CELL_CHARS + 10)]]);
+    const result = await tableToWorkbook([['raw_line'], ['x'.repeat(XLSX_MAX_CELL_CHARS + 10)]]);
     expect(result.truncatedCells).toBe(1);
     const cell = (await readWorkbook(toBuffer(result.bytes))).sheets[0].rows[1][0];
     expect(cell).toHaveLength(XLSX_MAX_CELL_CHARS);
@@ -211,7 +211,7 @@ describe('Excel export', () => {
 
   it('continues past the per-sheet row limit on further sheets, each with the header', async () => {
     const rows = Array.from({ length: 1048576 + 5 }, (_, index) => [String(index)]);
-    const result = await tableToXlsx([['n'], ...rows]);
+    const result = await tableToWorkbook([['n'], ...rows]);
     expect(result.sheetCount).toBe(2);
     const workbook = await readWorkbook(toBuffer(result.bytes));
     expect(workbook.sheets.map((sheet) => sheet.name)).toEqual(['Filtered rows 1', 'Filtered rows 2']);

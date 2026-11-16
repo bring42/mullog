@@ -195,12 +195,8 @@ export function rowsToTable(rows: LogRow[]): string[][] {
 
 export function rowsToCsv(rows: LogRow[]): string {
   return rowsToTable(rows)
-    .map((row) => row.map(escapeCsv).join(','))
+    .map((row) => row.map((cell) => escapeCsv(cell)).join(','))
     .join('\n');
-}
-
-export function downloadCsv(rows: LogRow[], fileName = 'filtered-log-export.csv'): void {
-  downloadBlob(new Blob([rowsToCsv(rows)], { type: 'text/csv;charset=utf-8' }), fileName);
 }
 
 export function downloadBlob(blob: Blob, fileName: string): void {
@@ -240,8 +236,8 @@ function valueForHeader(row: LogRow, header: string): string {
  * = + - @ tab or CR is run as a formula by Excel/LibreOffice, so it gets a leading `'`.
  * Plain numbers such as -5 or +3.2 are left alone.
  */
-export function escapeCsv(value: string): string {
+export function escapeCsv(value: string, delimiter = ','): string {
   const safe = /^[=+\-@\t\r]/.test(value) && !/^[+-]?\d+([.,]\d+)?$/.test(value) ? `'${value}` : value;
-  if (/[",\n\r]/.test(safe)) return `"${safe.replaceAll('"', '""')}"`;
+  if (/["\n\r]/.test(safe) || safe.includes(delimiter)) return `"${safe.replaceAll('"', '""')}"`;
   return safe;
 }
