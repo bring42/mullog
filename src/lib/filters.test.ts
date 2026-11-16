@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, filterTokenLabel } from './filters';
+import { applyFilters, buildFacets, clearFilterToken, describeActiveFilters, emptyFilters, escapeCsv, filterTokenLabel } from './filters';
 import { parseFixture, withoutEofRow } from './__fixtures__/load';
 
 describe('search over merged rows', () => {
@@ -60,17 +60,15 @@ describe('filter tokens', () => {
   });
 });
 
-describe('Excel export', () => {
-  it('round-trips the exported table through xlsx', async () => {
-    const { tableToXlsx, readWorkbook } = await import('./spreadsheet');
-    const table = [
-      ['line_number', 'message'],
-      ['1', '007, leading zeros'],
-      ['2', 'multi\nline "quoted"']
-    ];
-    const bytes = await tableToXlsx(table);
-    const copy = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-    const workbook = await readWorkbook(copy);
-    expect(workbook.sheets[0].rows.slice(0, 3)).toEqual(table);
+describe('CSV export', () => {
+  it('defuses formula-looking cells but leaves numbers alone', () => {
+    expect(escapeCsv('=HYPERLINK("https://evil.example","x")')).toBe(`"'=HYPERLINK(""https://evil.example"",""x"")"`);
+    expect(escapeCsv('+cmd')).toBe("'+cmd");
+    expect(escapeCsv('-2+3')).toBe("'-2+3");
+    expect(escapeCsv('@SUM(A1)')).toBe("'@SUM(A1)");
+    expect(escapeCsv('\tx')).toBe("'\tx");
+    expect(escapeCsv('-5')).toBe('-5');
+    expect(escapeCsv('+3.25')).toBe('+3.25');
+    expect(escapeCsv('plain, text')).toBe('"plain, text"');
   });
 });

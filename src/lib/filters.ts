@@ -235,7 +235,13 @@ function valueForHeader(row: LogRow, header: string): string {
   return row.fields[header] ?? '';
 }
 
-function escapeCsv(value: string): string {
-  if (/[",\n\r]/.test(value)) return `"${value.replaceAll('"', '""')}"`;
-  return value;
+/**
+ * Quotes a CSV cell and defuses spreadsheet formula injection: a cell starting with
+ * = + - @ tab or CR is run as a formula by Excel/LibreOffice, so it gets a leading `'`.
+ * Plain numbers such as -5 or +3.2 are left alone.
+ */
+export function escapeCsv(value: string): string {
+  const safe = /^[=+\-@\t\r]/.test(value) && !/^[+-]?\d+([.,]\d+)?$/.test(value) ? `'${value}` : value;
+  if (/[",\n\r]/.test(safe)) return `"${safe.replaceAll('"', '""')}"`;
+  return safe;
 }
