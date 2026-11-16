@@ -3,7 +3,7 @@ import { analyseSheetRows, analyseText } from './layout';
 import { parseLogText, parseSpreadsheet, type ParseOptions } from './parser';
 import { parseText } from './__fixtures__/load';
 import { buildExport, rowsToMarkdown } from './exporters';
-import { gunzip, gunzippedName, isGzip } from './compression';
+import { gunzip, gunzippedName, isGzip, isTarArchive } from './compression';
 import type { ImportSettings } from './types';
 
 const options = (fileName: string, settings?: ImportSettings): ParseOptions => ({
@@ -203,5 +203,44 @@ describe('gzip', () => {
     expect(isGzip('app.log', new TextEncoder().encode(original).buffer as ArrayBuffer)).toBe(false);
     expect(new TextDecoder().decode(await gunzip(compressed))).toBe(original);
     expect(gunzippedName('app.log.gz')).toBe('app.log');
+  });
+});
+
+describe('review fixes', () => {
+  it('still finds a footer in a long CSV when a multi-line cell spans the tail sample cut', () => {
+    // Over 2,000 lines, so the footer search looks at a separate 200-line tail that starts inside a quoted cell.
+    const lines = ['time,level,message', '2024-11-04 07:59:00,INFO,single line'];
+    for (let index = 0; lines.length < 2300; index += 1) {
+      lines.push(`2024-11-04 08:00:00,INFO,"first line ${index}`, `second line ${index}"`);
+    }
+    lines.push('', 'Total: 1150 events');
+    // Shift by one line if needed so the cut falls between the two lines of a cell.
+    if (!lines[lines.length - 200].startsWith('second')) lines.splice(lines.length - 2, 0, '2024-11-04 09:00:00,INFO,last single line');
+    expect(lines[lines.length - 200].startsWith('second')).toBe(true);
+    const analysis = analyseText(lines.join('\n'), { fileName: 'big.csv' });
+    expect(analysis.suggested).toMatchObject({ layout: 'delimited', skipStart: 0, skipEnd: 2 });
+  });
+
+  it('keeps # lines inside quoted cells when ignoring comments', () => {
+    const settings: ImportSettings = { layout: 'delimited', delimiter: ',', hasHeader: true, skipStart: 0, skipEnd: 0, ignoreComments: true };
+    const text = ['# exported by tool', 'step,notes', '1,"Steps:', '# restart pump', '# check valve"', '2,done'].join('\n');
+    const result = parseLogText(text, options('x.csv', settings));
+    expect(result.rows.map((row) => row.fields.notes)).toEqual(['Steps:\n# restart pump\n# check valve', 'done']);
+  });
+
+  it('reads sheets and headerless CSVs with more rows than fit in a function call', () => {
+    const rows = Array.from({ length: 150_000 }, (_, index) => [String(index), String(index * 2)]);
+    const sheet = parseSpreadsheet({ name: 'Big', rows }, ['Big'], 'xlsx', options('big.xlsx'));
+    expect(sheet.rows).toHaveLength(150_000);
+    const csv = parseLogText(rows.map((row) => row.join(',')).join('\n'), options('big.csv'));
+    expect(csv.rows).toHaveLength(150_000);
+  });
+
+  it('recognises tar archives', () => {
+    const tar = new Uint8Array(512);
+    tar.set(new TextEncoder().encode('ustar'), 257);
+    expect(isTarArchive('logs.tar.gz-decompressed', tar.buffer)).toBe(true);
+    expect(isTarArchive('logs.tgz', new ArrayBuffer(0))).toBe(true);
+    expect(isTarArchive('app.log', new TextEncoder().encode('x'.repeat(600)).buffer as ArrayBuffer)).toBe(false);
   });
 });

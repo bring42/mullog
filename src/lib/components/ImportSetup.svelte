@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte';
   import Icon from './Icon.svelte';
-  import { DELIMITERS, LAYOUT_LABELS, delimiterName } from '$lib/layout';
+  import { DELIMITERS, LAYOUT_LABELS, delimiterName, isCommentLine } from '$lib/layout';
   import type { ImportSettings, LayoutAnalysis, LayoutCandidate, LogRow, ParseResult, PreviewLine, TextLayout } from '$lib/types';
 
   export let fileName = '';
@@ -46,16 +46,31 @@
   $: sampleRow = pickSample(result?.rows ?? [], analysis.sampleLine);
   $: stats = summarise(result);
 
-  // Per-layout comparison on the same real line further down the file.
-  $: comparisons = new Map(
-    choices.map((choice) => {
-      const parsed = safePreview({ ...effective, layout: choice.layout, delimiter: choice.delimiter ?? effective.delimiter });
-      // A layout that fell back to plain lines, or didn't match the sample, has nothing to compare.
-      const fellBack = parsed && choice.layout !== 'freeform' && parsed.detection.detectedType === 'txt';
-      const row = parsed && !fellBack ? pickSample(parsed.rows, analysis.sampleLine) : undefined;
-      return [choice.layout, row && parsed && !row.malformed ? describeRow(row, parsed) : []] as const;
-    })
-  );
+  $: visibleChoices = showOthers ? choices : fitting;
+
+  // Per-layout comparison on the same real line further down the file. Only the shown choices,
+  // and only when something other than the selected layout changes: picking a layout is free.
+  $: comparisonKey = JSON.stringify([
+    effective.skipStart,
+    effective.skipEnd,
+    effective.ignoreComments,
+    effective.delimiter,
+    effective.hasHeader,
+    visibleChoices.map((choice) => `${choice.layout}${choice.delimiter ?? ''}`)
+  ]);
+  $: comparisons = compare(comparisonKey);
+
+  function compare(_key: string): Map<TextLayout, Array<{ name: string; value: string }>> {
+    return new Map(
+      visibleChoices.map((choice) => {
+        const parsed = safePreview({ ...effective, layout: choice.layout, delimiter: choice.delimiter ?? effective.delimiter });
+        // A layout that fell back to plain lines, or didn't match the sample, has nothing to compare.
+        const fellBack = parsed && choice.layout !== 'freeform' && parsed.detection.detectedType === 'txt';
+        const row = parsed && !fellBack ? pickSample(parsed.rows, analysis.sampleLine) : undefined;
+        return [choice.layout, row && parsed && !row.malformed ? describeRow(row, parsed) : []];
+      })
+    );
+  }
 
   function safePreview(next: ImportSettings): ParseResult | undefined {
     try {
@@ -113,7 +128,7 @@
 
   function lineState(number: number, text: string): 'skipped' | 'comment' | 'header' | 'data' {
     if (number < firstKept || number > lastKept) return 'skipped';
-    if (kind === 'text' && effective.ignoreComments && /^\s*(?:#|\/\/)/.test(text)) return 'comment';
+    if (kind === 'text' && effective.ignoreComments && effective.layout !== 'w3c' && isCommentLine(text)) return 'comment';
     if (number === headerLine) return 'header';
     return 'data';
   }
@@ -253,7 +268,7 @@
             <p class="hint">Each option shows how it would read {unit} {analysis.sampleLine}, a typical {unit} further down.</p>
           {/if}
           <div class="choices" role="radiogroup" aria-labelledby="setup-layout">
-            {#each showOthers ? choices : fitting as choice (choice.layout)}
+            {#each visibleChoices as choice (choice.layout)}
               {@const fit = fitLabel(choice.confidence)}
               {@const fields = comparisons.get(choice.layout) ?? []}
               <label class="choice" class:selected={draft.layout === choice.layout}>

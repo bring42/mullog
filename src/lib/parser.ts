@@ -14,9 +14,9 @@ import type {
   TextLayout
 } from './types';
 import { stripUtf8Bom } from './encoding';
-import { ACCESS_LINE, analyseSheetRows, analyseText, isCommentLine, logfmtPairs, SYSLOG_3164, SYSLOG_5424 } from './layout';
+import { ACCESS_LINE, analyseSheetRows, analyseText, DELIMITERS, delimiterName, hasOddQuotes, isCommentLine, logfmtPairs, SYSLOG_3164, SYSLOG_5424 } from './layout';
+import { mode, round } from './stats';
 
-const DELIMITERS = [',', ';', '\t', '|'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const TIMESTAMP_PATTERNS: Array<{ name: string; pattern: RegExp; normalise: (value: string) => string }> = [
   {
@@ -131,12 +131,18 @@ function keepLines(text: string, settings: ImportSettings): { text: string; isRe
   const total = lines.length > 1 && lines[lines.length - 1] === '' ? lines.length - 1 : lines.length;
   const lastKept = total - Math.max(0, settings.skipEnd);
   const removed = new Set<number>();
+  // In delimited files a line inside a quoted multi-line cell is cell text, never a comment.
+  const tracksQuotes = settings.layout === 'delimited';
+  let inQuote = false;
   for (let index = 0; index < total; index += 1) {
     const line = index + 1;
-    if (line <= settings.skipStart || line > lastKept || (settings.ignoreComments && settings.layout !== 'w3c' && isCommentLine(lines[index]))) {
+    const original = lines[index];
+    const comment = settings.ignoreComments && settings.layout !== 'w3c' && !inQuote && isCommentLine(original);
+    if (line <= settings.skipStart || line > lastKept || comment) {
       removed.add(line);
       lines[index] = '';
     }
+    if (tracksQuotes && !removed.has(line) && hasOddQuotes(original)) inQuote = !inQuote;
   }
   return { text: lines.join('\n'), isRemoved: (line) => removed.has(line), removedCount: removed.size };
 }
@@ -170,7 +176,7 @@ function parseCsv(text: string, options: ParseOptions, inheritedWarnings: ParseW
   return buildTable(headers, dataRecords, options, warnings, {
     detectedType: 'csv',
     rowLabel: 'CSV row',
-    delimiter: printableDelimiter(delimiter),
+    delimiter: delimiterName(delimiter),
     delimiterConfidence: delimiterInfo.confidence,
     hasHeader: headerInfo.hasHeader,
     headerConfidence: headerInfo.confidence
@@ -200,7 +206,7 @@ export function parseSpreadsheet(
   const keptRows = sheet.rows.filter((_, index) => keep(allNumbers[index]));
   const keptNumbers = allNumbers.filter(keep);
   // Width from the kept rows only, so a wide title block doesn't add empty columns.
-  const width = Math.max(1, ...keptRows.map((row) => trimTrailingEmpty(row).length));
+  const width = keptRows.reduce((max, row) => Math.max(max, trimTrailingEmpty(row).length), 1);
   const records: CsvRecord[] = keptRows.map((cells, index) => {
     const fields = Array.from({ length: width }, (_, column) => cells[column] ?? '');
     const rowNumber = keptNumbers[index];
@@ -1444,7 +1450,8 @@ function buildAssumptions(input: {
 }
 
 function maxFieldCount(records: CsvRecord[]): number {
-  return Math.max(1, ...records.map((record) => record.fields.length));
+  // reduce, not Math.max(...): spreading 100k+ arguments overflows the call stack.
+  return records.reduce((max, record) => Math.max(max, record.fields.length), 1);
 }
 
 function sanitiseHeader(value: string, index: number): string {
@@ -1469,20 +1476,5 @@ function looksNumeric(value: string): boolean {
   return /^[-+]?\d+(?:[.,]\d+)?$/.test(value.trim());
 }
 
-function mode(values: number[]): number {
-  const counts = new Map<number, number>();
-  values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 1;
-}
 
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
-function printableDelimiter(delimiter: string): string {
-  if (delimiter === '\t') return 'tab';
-  if (delimiter === ',') return 'comma';
-  if (delimiter === ';') return 'semicolon';
-  if (delimiter === '|') return 'pipe';
-  return delimiter;
-}

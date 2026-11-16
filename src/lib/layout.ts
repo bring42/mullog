@@ -5,6 +5,7 @@
  */
 import type { ImportSettings, LayoutAnalysis, LayoutCandidate, ParserMode, TextLayout } from './types';
 import { findTimestamp, isJsonObject, parseSingleCsvLine, splitLines } from './parser';
+import { mode, round } from './stats';
 
 /** Lines sampled from the top of the file for detection. */
 const HEAD_SAMPLE = 2000;
@@ -71,6 +72,20 @@ export function logfmtPairs(line: string): Array<[string, string]> | undefined {
 
 export function isSyslogLine(line: string): boolean {
   return SYSLOG_5424.test(line) || SYSLOG_3164.test(line);
+}
+
+/** An odd number of double quotes opens or closes a quoted cell that continues on the next line. */
+export function hasOddQuotes(line: string): boolean {
+  let count = 0;
+  for (let index = line.indexOf('"'); index !== -1; index = line.indexOf('"', index + 1)) count += 1;
+  return count % 2 === 1;
+}
+
+/** Whether a quoted cell is still open at the start of line `end` (0-based). */
+function quoteOpenBefore(lines: string[], end: number): boolean {
+  let open = false;
+  for (let index = 0; index < end; index += 1) if (hasOddQuotes(lines[index])) open = !open;
+  return open;
 }
 
 const COMMENT_LINE = /^\s*(?:#|\/\/)/;
@@ -153,8 +168,9 @@ export function analyseLines(lines: string[], options: AnalyseOptions): LayoutAn
   // JSON objects split neatly on commas and look like pairs; don't offer those readings.
   if (!mostlyJson) {
     lineFit('logfmt', (line) => logfmtPairs(line) !== undefined, 'are key=value pairs');
+    const tailStartsInQuote = quoteOpenBefore(lines, tailOffset);
     for (const delimiter of DELIMITERS) {
-      const fit = delimitedFit(head, tail, tailOffset, lines.length, delimiter);
+      const fit = delimitedFit(head, tail, tailOffset, lines.length, delimiter, tailStartsInQuote);
       if (fit) fits.push(fit);
     }
   }
@@ -264,20 +280,28 @@ function freeformFit(head: string[], ext: string): Fit {
  * Lines inside a quoted cell that spans lines continue the record above. Stand in the record's
  * first line for them, so they are judged like the record they belong to and not as junk.
  */
-function joinQuotedContinuations(lines: string[]): string[] {
-  let inQuote = false;
+function joinQuotedContinuations(lines: string[], startsInQuote = false): string[] {
+  let inQuote = startsInQuote;
   let recordStart = '';
   return lines.map((line) => {
     const view = inQuote ? recordStart : line;
     if (!inQuote) recordStart = line;
-    if ((line.match(/"/g)?.length ?? 0) % 2 === 1) inQuote = !inQuote;
+    if (hasOddQuotes(line)) inQuote = !inQuote;
     return view;
   });
 }
 
-function delimitedFit(rawHead: string[], rawTail: string[], tailOffset: number, total: number, delimiter: string): Fit | undefined {
+function delimitedFit(
+  rawHead: string[],
+  rawTail: string[],
+  tailOffset: number,
+  total: number,
+  delimiter: string,
+  tailStartsInQuote: boolean
+): Fit | undefined {
   const head = joinQuotedContinuations(rawHead);
-  const tail = joinQuotedContinuations(rawTail);
+  // The tail sample starts mid-file: carry the quote state over, or a cell spanning the cut flips every line after it.
+  const tail = joinQuotedContinuations(rawTail, tailStartsInQuote);
   const widthOf = (line: string) => (line.trim() === '' ? 0 : filledWidth(parseSingleCsvLine(line, delimiter)));
   const widths = head.map(widthOf);
   const modeWidth = mode(widths.filter((width) => width > 1));
@@ -399,11 +423,6 @@ function byConfidence(a: Fit, b: Fit): number {
   return b.candidate.confidence - a.candidate.confidence;
 }
 
-function mode(values: number[]): number {
-  const counts = new Map<number, number>();
-  values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? 0;
-}
 
 function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
@@ -416,6 +435,3 @@ function junkMessage(edge: 'first' | 'last', count: number, word: string, looks:
   return `The ${edge} ${word} ${singular}, so it is skipped.`;
 }
 
-function round(value: number): number {
-  return Math.round(value * 100) / 100;
-}

@@ -21,7 +21,7 @@
   } from '$lib/filters';
   import { parseLogText, parseSpreadsheet, splitLines } from '$lib/parser';
   import { analyseSheetRows, analyseText } from '$lib/layout';
-  import { gunzip, gunzippedName, isGzip } from '$lib/compression';
+  import { gunzip, gunzippedName, isGzip, isTarArchive } from '$lib/compression';
   import { firstUsefulSheet, readWorkbook, spreadsheetType, type Workbook } from '$lib/spreadsheet';
   import { decodeHashPayload, hasHashPayload, takePendingShare } from '$lib/share';
   import type {
@@ -67,6 +67,10 @@
   /** The setup opened on its own after loading, rather than from the toolbar. */
   let setupInitial = false;
   let setupLines: string[] = [];
+  /** The last whole-file JSON parse for the setup preview. */
+  let jsonPreview: { key: string; result: ParseResult } | null = null;
+  /** True once the user applied their own import settings; detection then stops replacing them. */
+  let settingsCustomised = false;
   /** Where focus goes back to when the setup closes. */
   let setupReturnFocus: HTMLElement | null = null;
   let headLines: PreviewLine[] = [];
@@ -195,6 +199,12 @@
     selectedRow = null;
     setupOpen = false;
 
+    if (isTarArchive(name, buffer)) {
+      loadingMessage = '';
+      loadError = `${name} is a tar archive with several files inside. Extract it first, then open the log you want.`;
+      return;
+    }
+
     if (isGzip(name, buffer)) {
       loadingMessage = `Decompressing ${name}…`;
       try {
@@ -262,14 +272,16 @@
     return sheet.rows.map((_, index) => sheet.rowNumbers?.[index] ?? index + 1);
   }
 
-  function analyseCurrent() {
+  function analyseCurrent(keepCustom = false) {
     if (workbook) {
       const sheet = currentSheet();
       analysis = analyseSheetRows(sheet.rows, sheetRowNumbers(sheet));
     } else {
       analysis = analyseText(currentText, { fileName });
     }
+    if (keepCustom && settingsCustomised && importSettings) return;
     importSettings = analysis.suggested;
+    settingsCustomised = false;
   }
 
   function openSetupIfUnclear() {
@@ -302,6 +314,7 @@
     if (!setupOpen) return;
     setupOpen = false;
     setupLines = [];
+    jsonPreview = null;
     const target = setupReturnFocus;
     setupReturnFocus = null;
     await tick();
@@ -310,6 +323,7 @@
 
   function applySettings(next: ImportSettings) {
     importSettings = next;
+    settingsCustomised = true;
     filters = { ...emptyFilters, columnFilters: {} };
     selectedRow = null;
     closeSetup();
@@ -331,8 +345,13 @@
         settings: { ...settings, skipEnd: Math.max(0, sliceLast - (lastRow - settings.skipEnd)) }
       });
     }
-    // A JSON document only parses whole.
-    if (settings.layout === 'json') return parseLogText(currentText, { ...options, settings });
+    // A JSON document only parses whole, so only when the file can plausibly be one, and once per
+    // set of settings. Otherwise the start of the file shows that it doesn't read as JSON.
+    if (settings.layout === 'json' && analysis?.candidates.some((candidate) => candidate.layout === 'json' && candidate.confidence >= 0.5)) {
+      const key = JSON.stringify(settings);
+      if (jsonPreview?.key !== key) jsonPreview = { key, result: parseLogText(currentText, { ...options, settings }) };
+      return jsonPreview.result;
+    }
     const lines = setupLines.slice(0, settings.skipStart + PREVIEW_LINES);
     const skipEnd = Math.max(0, lines.length - (setupLines.length - settings.skipEnd));
     return parseLogText(lines.join('\n'), { ...options, settings: { ...settings, skipEnd } });
@@ -400,6 +419,8 @@
       encodingConfidence = 1;
       encodingNotes = [`Manual override: ${encoding}.`];
       encodingWarnings = [];
+      // Detection on the wrongly decoded text may have been off; settings the user chose stay.
+      analyseCurrent(true);
       parseCurrent();
     }
   }
