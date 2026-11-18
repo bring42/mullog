@@ -193,23 +193,32 @@ describe('more export formats', () => {
   it('exports only the columns the table shows, in its order', async () => {
     const view = { columns: ['time', 'message'], timestampColumn: 'time', messageColumn: 'message' };
     const csv = await withBom((await buildExport('csv', rows.slice(1), view)).blob);
-    expect(csv).toBe('﻿line,time,message\n3,2024-11-04 08:00:01,"multi\nline"');
+    expect(csv).toBe('﻿time,message\n2024-11-04 08:00:01,"multi\nline"');
     const sheet = await buildExport('xlsx', rows, view);
     const { readWorkbook } = await import('./spreadsheet');
     const workbook = await readWorkbook(await sheet.blob.arrayBuffer());
-    expect(workbook.sheets[0].rows[0]).toEqual(['line', 'time', 'message']);
-    expect(workbook.sheets[0].rows[1]).toEqual(['2', '2024-11-04 08:00:00', 'a | b']);
+    expect(workbook.sheets[0].rows[0]).toEqual(['time', 'message']);
+    expect(workbook.sheets[0].rows[1]).toEqual(['2024-11-04 08:00:00', 'a | b']);
+  });
+
+  it('adds line numbers only when asked, and not twice', async () => {
+    const view = { columns: ['level'], lineNumbers: true };
+    const csv = await withBom((await buildExport('csv', rows.slice(0, 1), view)).blob);
+    expect(csv).toBe('﻿line,level\n2,INFO');
+    const plain = parseText('2024-11-04 08:00:00 INFO hello', 'app.log').rows;
+    const shown = { columns: ['line_number', 'message'], lineNumberColumn: 'line_number', lineNumbers: true };
+    expect(await withBom((await buildExport('csv', plain, shown)).blob)).toBe('﻿line_number,message\n1,hello');
   });
 
   it('writes semicolon CSV for comma-decimal Excel', async () => {
     const view = { columns: ['level', 'message'] };
     const csv = await withBom((await buildExport('csv-excel', rows.slice(0, 1), view)).blob);
-    expect(csv).toBe('﻿line;level;message\n2;INFO;a | b');
+    expect(csv).toBe('﻿level;message\nINFO;a | b');
   });
 
   it('falls back to the raw line when no column is shown', async () => {
     const csv = await withBom((await buildExport('csv', rows.slice(0, 1), { columns: [] })).blob);
-    expect(csv).toBe('﻿line,raw_line\n2,"2024-11-04 08:00:00,INFO,""a | b"""');
+    expect(csv).toBe('﻿raw_line\n"2024-11-04 08:00:00,INFO,""a | b"""');
   });
 
   it('exports the original lines', async () => {

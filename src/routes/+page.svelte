@@ -99,7 +99,8 @@
     columns: orderColumns(tableColumns, visibleColumns, { timestampColumn, severityColumn, messageColumn }),
     timestampColumn,
     severityColumn,
-    messageColumn
+    messageColumn,
+    lineNumberColumn: schema.find((column) => column.role === 'lineNumber')?.name
   };
   $: exportName =`${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered`;
   $: rowOrder = new Map(rows.map((row, index) => [row.id, index]));
