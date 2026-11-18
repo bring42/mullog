@@ -1,7 +1,7 @@
 import type { LogRow } from './types';
-import { escapeCsv, rowsToTable } from './filters';
+import { escapeCsv, rowsToTable, type TableView } from './filters';
 
-export type ExportFormatId = 'csv' | 'tsv' | 'xlsx' | 'ods' | 'json' | 'jsonl' | 'md' | 'log';
+export type ExportFormatId = 'csv' | 'csv-excel' | 'tsv' | 'xlsx' | 'ods' | 'json' | 'jsonl' | 'md' | 'log';
 
 export interface ExportFormat {
   id: ExportFormatId;
@@ -19,9 +19,16 @@ export interface ExportResult {
 }
 
 export const EXPORT_FORMATS: ExportFormat[] = [
-  { id: 'csv', label: 'CSV', extension: 'csv', group: 'Spreadsheet', hint: 'Comma-separated, opens anywhere' },
   { id: 'xlsx', label: 'Excel', extension: 'xlsx', group: 'Spreadsheet', hint: 'Microsoft Excel workbook' },
   { id: 'ods', label: 'OpenDocument', extension: 'ods', group: 'Spreadsheet', hint: 'LibreOffice / Numbers / Google Sheets' },
+  { id: 'csv', label: 'CSV', extension: 'csv', group: 'Spreadsheet', hint: 'Comma-separated, opens anywhere' },
+  {
+    id: 'csv-excel',
+    label: 'CSV with semicolons',
+    extension: 'csv',
+    group: 'Spreadsheet',
+    hint: 'For Excel in Swedish, German and other languages that write 1,5'
+  },
   { id: 'tsv', label: 'TSV', extension: 'tsv', group: 'Spreadsheet', hint: 'Tab-separated' },
   { id: 'json', label: 'JSON', extension: 'json', group: 'Data', hint: 'Array of objects' },
   { id: 'jsonl', label: 'JSON Lines', extension: 'jsonl', group: 'Data', hint: 'One object per line' },
@@ -31,6 +38,7 @@ export const EXPORT_FORMATS: ExportFormat[] = [
 
 const MIME: Record<ExportFormatId, string> = {
   csv: 'text/csv;charset=utf-8',
+  'csv-excel': 'text/csv;charset=utf-8',
   tsv: 'text/tab-separated-values;charset=utf-8',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   ods: 'application/vnd.oasis.opendocument.spreadsheet',
@@ -40,25 +48,35 @@ const MIME: Record<ExportFormatId, string> = {
   log: 'text/plain;charset=utf-8'
 };
 
-export async function buildExport(format: ExportFormatId, rows: LogRow[]): Promise<ExportResult> {
+/** Excel reads CSV as the system code page (å ä ö turn into mojibake) unless the file starts with a BOM. */
+const BOM = '﻿';
+
+/**
+ * Builds the export file. With a view, the columns match what the table shows; "Original lines"
+ * always writes the raw lines.
+ */
+export async function buildExport(format: ExportFormatId, rows: LogRow[], view?: TableView): Promise<ExportResult> {
   const text = (value: string): ExportResult => ({ blob: new Blob([value], { type: MIME[format] }), notes: [] });
+  const table = () => rowsToTable(rows, view);
   switch (format) {
     case 'csv':
-      return text(delimitedText(rowsToTable(rows), ','));
+      return text(BOM + delimitedText(table(), ','));
+    case 'csv-excel':
+      return text(BOM + delimitedText(table(), ';'));
     case 'tsv':
-      return text(delimitedText(rowsToTable(rows), '\t'));
+      return text(delimitedText(table(), '\t'));
     case 'json':
-      return text(JSON.stringify(rowsToObjects(rows), null, 2));
+      return text(JSON.stringify(tableToObjects(table()), null, 2));
     case 'jsonl':
-      return text(rowsToObjects(rows).map((row) => JSON.stringify(row)).join('\n') + '\n');
+      return text(tableToObjects(table()).map((row) => JSON.stringify(row)).join('\n') + '\n');
     case 'md':
-      return text(rowsToMarkdown(rowsToTable(rows)));
+      return text(rowsToMarkdown(table()));
     case 'log':
       return text(rows.map((row) => row.rawLine).join('\n') + '\n');
     case 'xlsx':
     case 'ods': {
       const { tableToWorkbook } = await import('./spreadsheet');
-      const result = await tableToWorkbook(rowsToTable(rows), format);
+      const result = await tableToWorkbook(table(), format);
       const notes: string[] = [];
       if (result.sheetCount > 1) notes.push(`split across ${result.sheetCount} sheets (row limit per sheet)`);
       if (result.truncatedCells > 0) {
@@ -76,8 +94,12 @@ export function delimitedText(table: string[][], delimiter: string): string {
 }
 
 /** One object per row, keyed by the export column names. Values stay strings, exactly as shown. */
-export function rowsToObjects(rows: LogRow[]): Array<Record<string, string>> {
-  const [headers = [], ...body] = rowsToTable(rows);
+export function rowsToObjects(rows: LogRow[], view?: TableView): Array<Record<string, string>> {
+  return tableToObjects(rowsToTable(rows, view));
+}
+
+function tableToObjects(table: string[][]): Array<Record<string, string>> {
+  const [headers = [], ...body] = table;
   return body.map((cells) => {
     const record: Record<string, string> = {};
     headers.forEach((header, index) => {

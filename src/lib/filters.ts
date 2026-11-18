@@ -218,8 +218,44 @@ export function clearFilterToken(filters: FilterState, token: FilterToken): Filt
   }
 }
 
-/** Header row plus one string array per log row; shared by the CSV and Excel exports. */
-export function rowsToTable(rows: LogRow[]): string[][] {
+/** What the table currently shows: its columns in display order and which column plays which role. */
+export interface TableView {
+  columns: string[];
+  timestampColumn?: string;
+  severityColumn?: string;
+  messageColumn?: string;
+}
+
+/** Timestamp, then severity, then everything else, with the message last so it can fill the row. */
+export function orderColumns(all: string[], visible: string[], roles: Omit<TableView, 'columns'>): string[] {
+  const shown = all.filter((column) => visible.includes(column));
+  const lead = [roles.timestampColumn, roles.severityColumn].filter((column): column is string => !!column && shown.includes(column));
+  const tail = roles.messageColumn && shown.includes(roles.messageColumn) ? [roles.messageColumn] : [];
+  return [...lead, ...shown.filter((column) => !lead.includes(column) && !tail.includes(column)), ...tail];
+}
+
+/** A cell as the table shows it: timestamps as written in the file. */
+export function cellValue(row: LogRow, column: string, roles: Omit<TableView, 'columns'>): string {
+  if (column === roles.timestampColumn && row.timestampRaw) return row.timestampRaw;
+  return row.fields[column] ?? '';
+}
+
+/**
+ * Header row plus one string array per log row; shared by every export.
+ * With a view, the columns are the ones the table shows, in the same order, plus the line number.
+ * Merged multi-line messages export in full. Without a view, every parsed field and the raw line.
+ */
+export function rowsToTable(rows: LogRow[], view?: TableView): string[][] {
+  if (view) {
+    const columns = view.columns.length > 0 ? view.columns : ['raw_line'];
+    const value = (row: LogRow, column: string) => {
+      if (column === view.messageColumn && row.fullMessage) return row.fullMessage;
+      if (column === 'raw_line' && !(column in row.fields)) return row.rawLine;
+      return cellValue(row, column, view);
+    };
+    const lineHeader = columns.includes('line') ? '#' : 'line';
+    return [[lineHeader, ...columns], ...rows.map((row) => [String(row.lineNumber), ...columns.map((column) => value(row, column))])];
+  }
   const reserved = new Set(['line_number', 'timestamp', 'severity', 'category', 'raw']);
   const fieldNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))].filter((name) => !reserved.has(name));
   const headers = ['line_number', 'timestamp_iso', 'timestamp_raw', 'severity', 'category', ...fieldNames, 'raw_line'];

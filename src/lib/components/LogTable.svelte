@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher, onMount, tick } from 'svelte';
-  import { highlightSegments } from '$lib/filters';
+  import { cellValue, highlightSegments, orderColumns } from '$lib/filters';
   import type { LogRow } from '$lib/types';
 
   export let rows: LogRow[] = [];
@@ -149,7 +149,8 @@
     await tick();
   }
 
-  $: orderedColumns = orderColumns(columns, visibleColumns);
+  $: roles = { timestampColumn, severityColumn, messageColumn };
+  $: orderedColumns = orderColumns(columns, visibleColumns, roles);
   // The message column (when shown) absorbs all remaining width instead of being capped.
   $: flexColumn = messageColumn && orderedColumns.includes(messageColumn) ? messageColumn : undefined;
   // Merged rows get a "+N lines" hint in the message column, or the last column if message is hidden.
@@ -159,19 +160,6 @@
     return row.lineEnd ? row.lineEnd - row.lineNumber : 0;
   }
 
-  /** Timestamp, then severity, then everything else, with the message last so it can fill the row. */
-  function orderColumns(all: string[], visible: string[]): string[] {
-    const filtered = all.filter((column) => visible.includes(column));
-    const lead = [timestampColumn, severityColumn].filter((column): column is string => !!column && filtered.includes(column));
-    const tail = messageColumn && filtered.includes(messageColumn) ? [messageColumn] : [];
-    return [...lead, ...filtered.filter((column) => !lead.includes(column) && !tail.includes(column)), ...tail];
-  }
-
-  function cellValue(row: LogRow, column: string): string {
-    const value = row.fields[column] ?? '';
-    if (column === timestampColumn && row.timestampRaw) return row.timestampRaw;
-    return value;
-  }
 
   function columnClass(column: string): string {
     if (column === timestampColumn) return 'timestamp';
@@ -218,7 +206,7 @@
           >
             <td class="line-num">{row.lineNumber}</td>
             {#each orderedColumns as column}
-              {@const value = cellValue(row, column)}
+              {@const value = cellValue(row, column, roles)}
               <td class={columnClass(column)} title={value}>
                 {#if column === hintColumn && extraLines(row) > 0}
                   <span class="more-lines" title="Lines {row.lineNumber}–{row.lineEnd}">+{extraLines(row)} line{extraLines(row) === 1 ? '' : 's'}</span>
