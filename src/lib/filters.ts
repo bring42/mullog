@@ -224,6 +224,10 @@ export interface TableView {
   timestampColumn?: string;
   severityColumn?: string;
   messageColumn?: string;
+  /** The parsed line-number column, if the layout has one (shown or not). */
+  lineNumberColumn?: string;
+  /** Put the file's line number first. Off by default; skipped when the line-number column is already shown. */
+  lineNumbers?: boolean;
 }
 
 /** Timestamp, then severity, then everything else, with the message last so it can fill the row. */
@@ -242,7 +246,8 @@ export function cellValue(row: LogRow, column: string, roles: Omit<TableView, 'c
 
 /**
  * Header row plus one string array per log row; shared by every export.
- * With a view, the columns are the ones the table shows, in the same order, plus the line number.
+ * With a view, the columns are the ones the table shows, in the same order, and the line number
+ * first only when asked for.
  * Merged multi-line messages export in full. Without a view, every parsed field and the raw line.
  */
 export function rowsToTable(rows: LogRow[], view?: TableView): string[][] {
@@ -253,8 +258,11 @@ export function rowsToTable(rows: LogRow[], view?: TableView): string[][] {
       if (column === 'raw_line' && !(column in row.fields)) return row.rawLine;
       return cellValue(row, column, view);
     };
+    const body = rows.map((row) => columns.map((column) => value(row, column)));
+    const lineShown = !!view.lineNumberColumn && columns.includes(view.lineNumberColumn);
+    if (!view.lineNumbers || lineShown) return [columns, ...body];
     const lineHeader = columns.includes('line') ? '#' : 'line';
-    return [[lineHeader, ...columns], ...rows.map((row) => [String(row.lineNumber), ...columns.map((column) => value(row, column))])];
+    return [[lineHeader, ...columns], ...body.map((cells, index) => [String(rows[index].lineNumber), ...cells])];
   }
   const reserved = new Set(['line_number', 'timestamp', 'severity', 'category', 'raw']);
   const fieldNames = [...new Set(rows.flatMap((row) => Object.keys(row.fields)))].filter((name) => !reserved.has(name));

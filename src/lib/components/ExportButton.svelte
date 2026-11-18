@@ -23,11 +23,32 @@
   let trigger: HTMLButtonElement;
   let menu: HTMLDivElement | undefined;
 
+  // Off by default; the choice is remembered in this browser only.
+  const LINE_NUMBERS_KEY = 'mullog.export.lineNumbers';
+  let lineNumbers = readLineNumbers();
+
+  function readLineNumbers(): boolean {
+    try {
+      return localStorage.getItem(LINE_NUMBERS_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function toggleLineNumbers() {
+    lineNumbers = !lineNumbers;
+    try {
+      localStorage.setItem(LINE_NUMBERS_KEY, lineNumbers ? '1' : '0');
+    } catch {
+      // Private mode or blocked storage: the choice just lasts for this visit.
+    }
+  }
+
   // A new file or filter makes any earlier export message stale.
   $: rows, (message = '');
 
   function items(): HTMLButtonElement[] {
-    return menu ? [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')] : [];
+    return menu ? [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"]')] : [];
   }
 
   async function openMenu(focus: 'first' | 'last' = 'first') {
@@ -48,7 +69,7 @@
     busy = true;
     message = '';
     try {
-      const result = await buildExport(format.id, rows, view);
+      const result = await buildExport(format.id, rows, view && { ...view, lineNumbers });
       downloadBlob(result.blob, `${fileName}.${format.extension}`);
       if (result.notes.length) {
         messageKind = 'info';
@@ -119,6 +140,11 @@
   {#if open}
     <!-- svelte-ignore a11y-interactive-supports-focus -->
     <div id="export-menu" class="menu" role="menu" aria-label="Export format" bind:this={menu} on:keydown={onMenuKeydown}>
+      <button type="button" role="menuitemcheckbox" aria-checked={lineNumbers} tabindex="-1" class="option" on:click={toggleLineNumbers}>
+        <span class="check" aria-hidden="true">{lineNumbers ? '✓' : ''}</span>
+        <span class="item-label">Include line numbers</span>
+      </button>
+      <div class="sep" role="separator"></div>
       {#each groups as { group, formats }, groupIndex}
         <div class="group" role="group" aria-label={group}>
           {#if groupIndex > 0}<div class="sep" role="separator"></div>{/if}
@@ -179,6 +205,21 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-faint);
+  }
+  .menu button.option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .check {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
   }
   .item-label {
     display: block;
