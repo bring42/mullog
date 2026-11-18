@@ -168,6 +168,8 @@ describe('W3C / IIS', () => {
 });
 
 describe('more export formats', () => {
+  // Blob.text() drops a leading BOM; decode by hand so the tests can see it.
+  const withBom = async (blob: Blob) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(await blob.arrayBuffer());
   const rows = parseText('time,level,message\n2024-11-04 08:00:00,INFO,"a | b"\n2024-11-04 08:00:01,ERROR,"multi\nline"', 'x.csv').rows;
 
   it('writes TSV with tabs and quoting', async () => {
@@ -186,6 +188,28 @@ describe('more export formats', () => {
 
   it('escapes pipes and line breaks in Markdown', () => {
     expect(rowsToMarkdown([['a', 'b'], ['x | y', 'one\ntwo']])).toBe('| a | b |\n| --- | --- |\n| x \\| y | one<br>two |\n');
+  });
+
+  it('exports only the columns the table shows, in its order', async () => {
+    const view = { columns: ['time', 'message'], timestampColumn: 'time', messageColumn: 'message' };
+    const csv = await withBom((await buildExport('csv', rows.slice(1), view)).blob);
+    expect(csv).toBe('﻿line,time,message\n3,2024-11-04 08:00:01,"multi\nline"');
+    const sheet = await buildExport('xlsx', rows, view);
+    const { readWorkbook } = await import('./spreadsheet');
+    const workbook = await readWorkbook(await sheet.blob.arrayBuffer());
+    expect(workbook.sheets[0].rows[0]).toEqual(['line', 'time', 'message']);
+    expect(workbook.sheets[0].rows[1]).toEqual(['2', '2024-11-04 08:00:00', 'a | b']);
+  });
+
+  it('writes semicolon CSV for comma-decimal Excel', async () => {
+    const view = { columns: ['level', 'message'] };
+    const csv = await withBom((await buildExport('csv-excel', rows.slice(0, 1), view)).blob);
+    expect(csv).toBe('﻿line;level;message\n2;INFO;a | b');
+  });
+
+  it('falls back to the raw line when no column is shown', async () => {
+    const csv = await withBom((await buildExport('csv', rows.slice(0, 1), { columns: [] })).blob);
+    expect(csv).toBe('﻿line,raw_line\n2,"2024-11-04 08:00:00,INFO,""a | b"""');
   });
 
   it('exports the original lines', async () => {

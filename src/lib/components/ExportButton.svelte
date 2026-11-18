@@ -1,10 +1,12 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import type { LogRow } from '$lib/types';
-  import { downloadBlob } from '$lib/filters';
+  import { downloadBlob, type TableView } from '$lib/filters';
   import { buildExport, EXPORT_FORMATS, type ExportFormat } from '$lib/exporters';
 
   export let rows: LogRow[] = [];
+  /** The table's shown columns; the export uses the same ones. */
+  export let view: TableView | undefined = undefined;
   /** File name without extension. */
   export let fileName = 'filtered-log-export';
 
@@ -46,7 +48,7 @@
     busy = true;
     message = '';
     try {
-      const result = await buildExport(format.id, rows);
+      const result = await buildExport(format.id, rows, view);
       downloadBlob(result.blob, `${fileName}.${format.extension}`);
       if (result.notes.length) {
         messageKind = 'info';
@@ -109,7 +111,7 @@
     aria-controls="export-menu"
     on:click={() => (open ? closeMenu() : openMenu())}
     on:keydown={onTriggerKeydown}
-    title="Export filtered rows"
+    title="Export the rows and columns shown"
   >
     {busy ? 'Exporting…' : 'Export'}
     <span class="btn-count">{rows.length.toLocaleString()}</span>

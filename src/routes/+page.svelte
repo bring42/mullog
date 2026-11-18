@@ -17,7 +17,8 @@
     emptyFilters,
     facetColumnsFor,
     filterTokenKey,
-    filterTokenLabel
+    filterTokenLabel,
+    orderColumns
   } from '$lib/filters';
   import { parseLogText, parseSpreadsheet, splitLines } from '$lib/parser';
   import { analyseSheetRows, analyseText } from '$lib/layout';
@@ -94,7 +95,13 @@
   $: activeTokens = describeActiveFilters(filters);
   $: tableColumns = detection?.schema.map((column) => column.name) ?? [];
   $: timestampColumn = detection?.schema.find((column) => column.role === 'timestamp')?.name;
-  $: exportName = `${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered`;
+  $: exportView = {
+    columns: orderColumns(tableColumns, visibleColumns, { timestampColumn, severityColumn, messageColumn }),
+    timestampColumn,
+    severityColumn,
+    messageColumn
+  };
+  $: exportName =`${fileName.replace(/\.[^.]+$/, '') || 'log'}-filtered`;
   $: rowOrder = new Map(rows.map((row, index) => [row.id, index]));
   $: selectedPosition = selectedRow ? filteredRows.findIndex((row) => row.id === selectedRow?.id) : -1;
   $: canPrev = neighbourIndex(-1, selectedRow, selectedPosition, filteredRows, rowOrder) !== -1;
@@ -635,7 +642,7 @@
           <Icon name="sliders" size={16} />
           Import
         </button>
-        <ExportButton rows={filteredRows} fileName={exportName} />
+        <ExportButton rows={filteredRows} view={exportView} fileName={exportName} />
         <button class="btn ghost desktop-only" type="button" on:click={clearFile} title="Load another file">New file</button>
         <div class="mobile-only">
           <DetectionPanel

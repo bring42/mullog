@@ -27,7 +27,7 @@ A static-deployable SvelteKit + TypeScript app for inspecting, parsing, filterin
 - Active filter tokens
 - Raw, structured, and hybrid table views
 - Row inspector with raw line, parsed fields, line number, and detection notes
-- Export of the currently filtered rows as CSV, Excel (.xlsx), OpenDocument (.ods), TSV, JSON, JSON Lines, a Markdown table, or the original log lines
+- Export of the currently filtered rows and shown columns as Excel (.xlsx), OpenDocument (.ods), CSV (comma, or semicolon for Excel in comma-decimal languages), TSV, JSON, JSON Lines, a Markdown table, or the original log lines
 - Keyboard shortcuts:
   - `/` focuses search
   - `Esc` closes the selected row inspector and mobile filter drawer
